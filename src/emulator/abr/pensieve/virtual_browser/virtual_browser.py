@@ -11,7 +11,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import redis
-redis_client = redis.Redis(host="128.105.145.101", port=6379, decode_responses=True)
+redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
 print("Ping")
 redis_client.ping()
 print("Ping 2")

@@ -15,8 +15,10 @@ import random
 import subprocess
 import sys
 sys.path.append('/users/janechen/Genet/src')    
+sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve")
+print(sys.path)
 from simulator.abr_simulator.pensieve import a3c
-from utils import linear_reward
+from emulator.abr.pensieve.utils import linear_reward
 
 
 MODEL_SAVE_INTERVAL = 500
@@ -645,7 +647,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
 
     # 1) Create redis for state/action communication
-    redis_client = redis.Redis(host="127.0.0.1", port=6379, decode_responses=True)
+    redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
     redis_client.set(f"{agent_id}_action_flag", int(False))
 
     with tf.compat.v1.Session() as sess:

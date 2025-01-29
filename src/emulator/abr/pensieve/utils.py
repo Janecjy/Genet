@@ -7,7 +7,7 @@ import re
 import numpy as np
 from numba import jit
 
-from constants import (HD_REWARD, M_IN_K, REBUF_PENALTY,
+from .constants import (HD_REWARD, M_IN_K, REBUF_PENALTY,
                                 SMOOTH_PENALTY, VIDEO_BIT_RATE)
 
 NAMES = ['timestamp', 'bandwidth']
