@@ -232,6 +232,8 @@ Training model from scratch is optinal
 Expected time usage: 21hr on a VM with 32 vCPUs by sequentially running the
 following scripts.
 ```bash
+export PYTHONPATH="$PWD/src:$PYTHONPATH"
+chmod +x src/drivers/abr/train_genet.sh
 bash src/drivers/cc/train_udr3.sh
 bash src/drivers/cc/train_genet.sh
 bash src/drivers/cc/train_cl1.sh
@@ -259,3 +261,10 @@ bash src/drivers/cc/train_cl3.sh
     (genet) ubuntu@reproduce-genet:~/Genet/genet-lb-fig-upload$ python rl_test.py --saved_model="results/testing_model/udr_1/model_ep_49600.ckpt"
     2022-06-23 20:46:00.130224: E tensorflow/stream_executor/cuda/cuda_driver.cc:318] failed call to cuInit: UNKNOWN ERROR
     ```
+
+
+## Training Pensieve in emulation
+
+src/drivers/abr/train_genet.sh --mode emulation
+
+python abr_simulator/pensieve/train.py --total-epoch=5000 --seed=10 --save-dir=results/abr/genet_mpc/seed_10/bo_0 --exp-name=bo_0 --model-path=results/abr/new_trace_gen/udr3/seed_10/model_saved/nn_model_ep_1000.ckpt --nagent=10 --video-size-file-dir=data/abr/video_sizes --val-freq=100 udr --config-file=config/abr/udr3.json --val-trace-dir=data/abr/val_FCC

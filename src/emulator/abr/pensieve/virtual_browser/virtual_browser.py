@@ -5,11 +5,16 @@ import os
 import signal
 from time import sleep
 from urllib.parse import ParseResult, parse_qsl, unquote, urlencode, urlparse
-
+import subprocess
 from pyvirtualdisplay import Display
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+import redis
+redis_client = redis.Redis(host="128.105.145.101", port=6379, decode_responses=True)
+print("Ping")
+redis_client.ping()
+print("Ping 2")
 
 from pensieve.virtual_browser.abr_server import run_abr_server
 
@@ -73,6 +78,16 @@ def parse_args():
     parser.add_argument('--buffer-threshold', type=int, default=60,
             help='Buffer threshold of Dash.js MediaPlayer. Unit: Second.')
 
+    # New training arguments
+    parser.add_argument('--train', action='store_true',
+                        help='Enable training mode')
+    parser.add_argument('--num-agents', type=int, default=16,
+                        help='Number of training agents')
+    parser.add_argument('--model-save-interval', type=int, default=100,
+                        help='Save model every N iterations')
+    parser.add_argument('--num-epochs', type=int, default=100000,
+                        help='Number of training epochs')
+    
     return parser.parse_args()
 
 
@@ -124,6 +139,23 @@ def add_url_params(url, params):
 def timeout_handler(signum, frame):
     raise Exception("Timeout")
 
+def launch_bpftrace(trace_output_file):
+    """Launch bpftrace script and return the process."""
+    cmd = "sudo bpftrace check.bt > bpftrace_output.txt"
+    
+    # with open(trace_output_file, 'w') as f:
+    process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE)
+    check_interval = 10
+
+    # Start log rotation process
+#     rotation_cmd = f"watch -n {check_interval} python3 -c '\
+# import sys; from collections import deque; \
+# lines = deque(open(\"{trace_output_file}\", \"r\"), maxlen=40000); \
+# open(\"{trace_output_file}\", \"w\").writelines(lines)'"
+    
+#     rotation_process = subprocess.Popen(rotation_cmd, shell=True)
+
+    return process
 
 def main():
     args = parse_args()
@@ -132,14 +164,55 @@ def main():
     abr_algo = args.abr
     run_time = args.run_time
 
+    # Start bpftrace before ABR server
+    trace_output = f"bpftrace_output.txt"
+    bpftrace_process = launch_bpftrace(trace_output)
+
     # start abr server here
     # prevent multiple process from being synchronized
-    abr_server_proc = mp.Process(target=run_abr_server, args=(
-        abr_algo, args.trace_file, args.summary_dir, args.actor_path,
-        args.video_size_file_dir, args.abr_server_ip, args.abr_server_port))
-    abr_server_proc.start()
 
+    # Start ABR server
+    # if args.train:
+    #     print("Starting ABR server in training mode...")
+    #     abr_server_proc = mp.Process(
+    #         target=run_training_server,
+    #         args=(
+    #             args.trace_file,
+    #             args.summary_dir,
+    #             args.actor_path,
+    #             args.video_size_file_dir,
+    #             args.num_agents,
+    #             args.model_save_interval,
+    #             args.num_epochs,
+    #             args.abr_server_ip,
+    #             args.abr_server_port
+    #         )
+    #     )
+    # else:
+    print("Starting ABR server in inference mode...")
+    print("Summary dir:", args.summary_dir)
+    abr_server_proc = mp.Process(
+        target=run_abr_server,
+        args=(
+            abr_algo,
+            args.trace_file,
+            args.summary_dir,
+            args.actor_path,
+            args.video_size_file_dir,
+            args.abr_server_ip,
+            args.abr_server_port
+        )
+    )
+    
+    abr_server_proc.start()
     sleep(0.5)
+
+    # abr_server_proc = mp.Process(target=run_abr_server, args=(
+    #     abr_algo, args.trace_file, args.summary_dir, args.actor_path,
+    #     args.video_size_file_dir, args.abr_server_ip, args.abr_server_port))
+    # abr_server_proc.start()
+
+    # sleep(0.5)
 
     # generate url
     url = 'http://{}:{}/index.html'.format(ip, port_number)
@@ -164,8 +237,8 @@ def main():
             os.path.dirname(os.path.abspath(__file__)),
             'abr_browser_dir/chrome_data_dir')
         # chrome_user_dir = '/tmp/chrome_user_dir_id_' + process_id
-        chrome_user_dir = '/tmp/lesley_chrome_user_dir'  # + process_id
-        os.system('rm -r ' + chrome_user_dir)
+        chrome_user_dir = '/tmp/chrome_user_dir'  # + process_id
+        # os.system('rm -r ' + chrome_user_dir)
         os.system('cp -r ' + default_chrome_user_dir + ' ' + chrome_user_dir)
 
         # to not display the page in browser
@@ -177,7 +250,7 @@ def main():
         chrome_driver = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             'abr_browser_dir/chromedriver')
-        options.add_argument('--user-data-dir=' + chrome_user_dir)
+        # options.add_argument('--user-data-dir=' + chrome_user_dir)
         # enable browser logging
         options.add_argument("--headless")
         options.add_argument("--disable-extensions")
@@ -194,7 +267,14 @@ def main():
         driver.set_page_load_timeout(10)
         driver.get(url)
 
+        if args.train:
+            print("Video streaming started. Training in progress...")
+            print("Will run for", run_time, "seconds")
+            print("Model checkpoints will be saved every", args.model_save_interval, "epochs")
+            print("Training logs will be saved to", args.summary_dir)
+        
         sleep(run_time)
+
         driver.quit()
         display.stop()
 
@@ -210,6 +290,10 @@ def main():
         # except:
         #     pass
         print(e)
+    finally:
+        bpftrace_process.terminate()
+        # rotation_process.terminate()
+        abr_server_proc.terminate()
     abr_server_proc.terminate()
 
 

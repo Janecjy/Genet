@@ -30,11 +30,15 @@ trap "pkill -f abr_server" EXIT
 # trap "pkill -f abr_server && pkill -f 'python -m http.server'" SIGINT
 # trap "pkill -f abr_server && pkill -f 'python -m http.server'" EXIT
 
-delay=40
+delay_list="5 10 20 40 80"
 up_pkt_loss=0
 down_pkt_loss=0
 buf_th=60
+
 trace_files=`ls ${TRACE_DIR}`
+
+# Outer loop: iterate over all delay values
+for delay in ${delay_list}; do
 #for buf_th in $(jq -r -c '.buffer_threshold.values[]' ${CONFIG_FILE}); do
  #   for delay in $(jq -r -c '.delay.values[]' ${CONFIG_FILE}); do
   #      for up_pkt_loss in $(jq -r -c '.uplink_packet_loss_rate.values[]' ${CONFIG_FILE}); do
@@ -42,9 +46,11 @@ trace_files=`ls ${TRACE_DIR}`
                 for trace_file in ${trace_files} ; do
 		                # trace_file=${UP_LINK_SPEED_FILE}
                     # echo "${buffer_threshold} ${delay} ${up_pkt_loss} ${down_pkt_loss} ${TRACE_FILE}"
+                      echo "RUNNO" 
+                      echo ${MAHIMAHI_BASE}
                       mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
                       mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \
-                      bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port 8000 --abr RL --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir pensieve/tests/ADR_${buf_th}_${delay}_${TRACE_DIR} --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322"
+                      bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port 8000 --abr RL --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir pensieve/tests/ADR_${buf_th}_${delay}_${TRACE_DIR} --trace-file ${trace_file} --abr-server-port=8322"
 
 #                      mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
 #                      mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \
@@ -62,7 +68,7 @@ trace_files=`ls ${TRACE_DIR}`
 #                done
  #           done
   #      done
-  #  done
+   done
 done
         # pkill -f "python -m http.server"
 

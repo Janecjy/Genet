@@ -118,3 +118,9 @@ __MACOSX
 .ccls-cache
 .ccls
 .idea
+models*
+results*
+log*
+genet/bin/*
+lib*
+pyvenv.cfg

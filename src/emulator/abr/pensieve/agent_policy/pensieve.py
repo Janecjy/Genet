@@ -1,23 +1,63 @@
-import csv
-import itertools
-import logging
 import os
+import csv
 import time
-from typing import Tuple
-
 import numpy as np
 import torch
 import torch.multiprocessing as mp
+import tensorflow as tf
+# import logger
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import logging
+import redis
+import json
+import random
+import subprocess
+import sys
+sys.path.append('/users/janechen/Genet/src')    
+from simulator.abr_simulator.pensieve import a3c
+from utils import linear_reward
 
-from pensieve.a3c import A3C, compute_entropy
-from pensieve.agent_policy import BaseAgentPolicy, RobustMPC
-from pensieve.constants import (ACTOR_LR_RATE, A_DIM, CRITIC_LR_RATE,
-                                DEFAULT_QUALITY, M_IN_K, S_INFO, S_LEN,
-                                VIDEO_BIT_RATE)
-from pensieve.utils import write_json_file
 
+MODEL_SAVE_INTERVAL = 500
+VIDEO_BIT_RATE = [300, 750, 1200, 1850, 2850, 4300]  # Kbps
+# VIDEO_BIT_RATE = [300, 1200, 2850, 6500, 33000, 165000]
+HD_REWARD = [1, 2, 3, 12, 15, 20]
+M_IN_K = 1000.0
+REBUF_PENALTY = 43  # 1 sec rebuffering -> 3 Mbps
+# REBUF_PENALTY = 165  # 1 sec rebuffering -> 3 Mbps
+SMOOTH_PENALTY = 1
+DEFAULT_QUALITY = 0  # default video quality without agent
+BITRATE_DIM = 6
 
-class Pensieve(BaseAgentPolicy):
+# bit_rate, buffer_size, next_chunk_size, bandwidth_measurement(throughput and
+# time), chunk_til_video_end
+S_INFO = 6
+S_LEN = 6  # take how many frames in the past
+A_DIM = 6
+ACTOR_LR_RATE = 0.0001
+CRITIC_LR_RATE = 0.001
+BUFFER_NORM_FACTOR = 10.0
+RAND_RANGE = 1000
+# log in format of time_stamp bit_rate buffer_size rebuffer_time chunk_size
+# download_time reward
+MILLISECONDS_IN_SECOND = 1000.0
+B_IN_MB = 1000000.0
+BITS_IN_BYTE = 8.0
+VIDEO_CHUNK_LEN = 4000.0  # millisec, every time add this amount to buffer
+TOTAL_VIDEO_CHUNK = 49
+PACKET_SIZE = 1500  # bytes
+NOISE_LOW = 0.9
+NOISE_HIGH = 1.1
+TRAIN_SEQ_LEN = 100  # batchsize of pensieve training 100
+
+# from pensieve.utils import compute_entropy
+
+UP_LINK_SPEED_FILE="pensieve/data/12mbps"
+VIDEO_SIZE_DIR="pensieve/data/video_sizes"
+# logger.set_logger('./log')
+
+class Pensieve():
     """Pensieve Implementation.
 
     Args
@@ -34,20 +74,20 @@ class Pensieve(BaseAgentPolicy):
             randomization.
     """
 
-    def __init__(self, num_agents, log_dir, actor_path=None,
+    def __init__(self, num_agents, log_dir, actor=None,
                  critic_path=None, model_save_interval=100, batch_size=100,
-                 randomization='', randomization_interval=1):
+                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces=""):
         # https://github.com/pytorch/pytorch/issues/3966
         # mp.set_start_method("spawn")
         self.num_agents = num_agents
 
-        self.net = A3C(True, [S_INFO, S_LEN], A_DIM,
-                       ACTOR_LR_RATE, CRITIC_LR_RATE)
+
+        self.net = actor
         # NOTE: this is required for the ``fork`` method to work
         # self.net.actor_network.share_memory()
         # self.net.critic_network.share_memory()
 
-        self.load_models(actor_path, critic_path)
+        #self.load_models(actor_path, critic_path)
 
         self.log_dir = log_dir
         os.makedirs(self.log_dir, exist_ok=True)
@@ -56,12 +96,28 @@ class Pensieve(BaseAgentPolicy):
         self.batch_size = batch_size
         self.randomization = randomization
         self.randomization_interval = randomization_interval
-        self.replay_buffer = ReplayBuffer()
+        self.video_size_file_dir = video_size_file_dir
+        self.val_traces = val_traces
 
-    def train(self, train_envs, val_envs=None, test_envs=None, iters=1e5,
-              reference_agent_policy=None, use_replay_buffer=False):
-        for net_env in train_envs:
-            net_env.reset()
+    def train(self, train_envs, save_dir, iters=1e5, use_replay_buffer=False):
+        """
+        train_envs: list of env configs, each is a dict like
+            {"trace_file": "path/to/trace", "delay": 20}
+        """
+
+        # Visdom Settings
+        # vis = visdom.Visdom()
+        # assert vis.check_connection()
+        plot_color = 'red'
+        # Visdom Logs
+        val_epochs = []
+        val_mean_rewards = []
+        average_rewards = []
+        average_entropies = []
+
+        logging.basicConfig(filename=os.path.join(save_dir, 'log_central'),
+                            filemode='w', level=logging.INFO)
+
         # inter-process communication queues
         net_params_queues = []
         exp_queues = []
@@ -69,34 +125,299 @@ class Pensieve(BaseAgentPolicy):
             net_params_queues.append(mp.Queue(1))
             exp_queues.append(mp.Queue(1))
 
-        # create a coordinator and multiple agent processes
-        # (note: threading is not desirable due to python GIL)
-        assert len(net_params_queues) == self.num_agents
-        assert len(exp_queues) == self.num_agents
-
+        # agent(agent_id, net_params_queue, exp_queue, train_envs,
+        #   summary_dir, batch_size, randomization, randomization_interval,
+        #   num_agents)
         agents = []
         for i in range(self.num_agents):
-
-            agents.append(mp.Process(target=agent,
-                                     args=(i, net_params_queues[i],
-                                           exp_queues[i], train_envs,
-                                           self.log_dir, self.batch_size,
-                                           self.randomization,
-                                           self.randomization_interval,
-                                           self.num_agents)))
+            agents.append(mp.Process(
+                target=agent,
+                args=(
+                    i,
+                    net_params_queues[i],
+                    exp_queues[i],
+                    train_envs,
+                    self.log_dir,
+                    self.batch_size,
+                    self.randomization,
+                    self.randomization_interval,
+                    self.num_agents
+                )
+            ))
+            # agents.append(mp.Process(
+            #     target=agent,
+            #     args=(TRAIN_SEQ_LEN, S_INFO, S_LEN, A_DIM,
+            #           save_dir, i, net_params_queues[i], exp_queues[i], trace_scheduler,
+            #           video_size_file_dir, self.jump_action)))
         for i in range(self.num_agents):
             agents[i].start()
+        with tf.Session() as sess, \
+                open(os.path.join(save_dir, 'log_train'), 'w', 1) as log_central_file, \
+                open(os.path.join(save_dir, 'log_val'), 'w', 1) as val_log_file:
+            log_writer = csv.writer(log_central_file, delimiter='\t', lineterminator='\n')
+            log_writer.writerow(['epoch', 'loss', 'avg_reward', 'avg_entropy'])
+            val_log_writer = csv.writer(val_log_file, delimiter='\t', lineterminator='\n')
+            val_log_writer.writerow(
+                ['epoch', 'rewards_min', 'rewards_5per', 'rewards_mean',
+                 'rewards_median', 'rewards_95per', 'rewards_max'])
 
-        self.central_agent(net_params_queues, exp_queues, iters, train_envs,
-                           val_envs, test_envs, use_replay_buffer)
+            actor = a3c.ActorNetwork(sess,
+                                     state_dim=[S_INFO, S_LEN],
+                                     action_dim=A_DIM,
+                                     bitrate_dim=BITRATE_DIM)
+                                     # learning_rate=args.ACTOR_LR_RATE)
+            critic = a3c.CriticNetwork(sess,
+                                       state_dim=[S_INFO, S_LEN],
+                                       learning_rate=CRITIC_LR_RATE,
+                                       bitrate_dim=BITRATE_DIM)
 
-        # wait unit training is done
+            logging.info('actor and critic initialized')
+            # summary_ops, summary_vars = a3c.build_summaries()
+
+            sess.run(tf.global_variables_initializer())
+            # writer = tf.summary.FileWriter(save_dir, sess.graph)  # training monitor
+            saver = tf.train.Saver(max_to_keep=None)  # save neural net parameters
+
+            # restore neural net parameters
+            # if self.model_path:  # nn_model is the path to file
+            #     saver.restore(sess, self.model_path)
+            #     print("Model restored.")
+
+            os.makedirs(os.path.join(save_dir, "model_saved"), exist_ok=True)
+
+            epoch = 0
+
+            # assemble experiences from agents, compute the gradients
+
+            # val_rewards = [self._test(
+            #     actor, trace, video_size_file_dir=self.video_size_file_dir,
+            #     save_dir=os.path.join(save_dir, "val_logs")) for trace in self.val_traces]
+            # val_mean_reward = np.mean(val_rewards)
+            # max_avg_reward = val_mean_reward
+
+            # val_log_writer.writerow(
+            #         [epoch, np.min(val_rewards),
+            #          np.percentile(val_rewards, 5), np.mean(val_rewards),
+            #          np.median(val_rewards), np.percentile(val_rewards, 95),
+            #          np.max(val_rewards)])
+            # val_epochs.append(epoch)
+            # val_mean_rewards.append(val_mean_reward)
+            bit_rate = DEFAULT_QUALITY
+            s_batch = [np.zeros((S_INFO, S_LEN))]
+            action_vec = np.zeros(A_DIM)
+            action_vec[bit_rate] = 1
+            a_batch = [action_vec]
+            r_batch = []
+            while epoch < 75000:
+                start_t = time.time()
+                # synchronize the network parameters of work agent
+                actor_net_params = actor.get_network_params()
+                critic_net_params = critic.get_network_params()
+                for i in range(self.num_agents):
+                    net_params_queues[i].put([actor_net_params, critic_net_params])
+
+                # record average reward and td loss change
+                # in the experiences from the agents
+                total_batch_len = 0.0
+                total_reward = 0.0
+                total_td_loss = 0.0
+                total_entropy = 0.0
+                total_agents = 0.0
+
+                # assemble experiences from the agents
+                actor_gradient_batch = []
+                critic_gradient_batch = []
+
+                # linear entropy weight decay(paper sec4.4)
+                entropy_weight = 0.5 #entropy_weight_decay_func(epoch)
+                current_learning_rate =  0.0001 # learning_rate_decay_func(epoch)
+
+                for i in range(self.num_agents):
+                    print(f"Initial s_batch: {s_batch}")
+                    s_batch, a_batch, r_batch, terminal, info = exp_queues[i].get()
+                    print(f"After getting exp_queues: {s_batch}")
+
+                    print(f"s_batch shape: {np.squeeze(np.stack(s_batch, axis=0), axis=1).shape}")
+                    print(f"a_batch shape: {np.vstack(a_batch).shape}")
+                    print(f"r_batch shape: {np.vstack(r_batch).shape}")
+                    actor_gradient, critic_gradient, td_batch = \
+                        a3c.compute_gradients(
+                            s_batch=np.squeeze(np.stack(s_batch, axis=0), axis=1),
+                            a_batch=np.vstack(a_batch),
+                            r_batch=np.vstack(r_batch),
+                            terminal=terminal, actor=actor,
+                            critic=critic,
+                            entropy_weight=entropy_weight)
+
+                    actor_gradient_batch.append(actor_gradient)
+                    critic_gradient_batch.append(critic_gradient)
+
+                    total_reward += np.sum(r_batch)
+                    total_td_loss += np.sum(td_batch)
+                    total_batch_len += len(r_batch)
+                    total_agents += 1.0
+                    total_entropy += np.sum(info['entropy'])
+
+                # compute aggregated gradient
+                assert self.num_agents == len(actor_gradient_batch)
+                assert len(actor_gradient_batch) == len(critic_gradient_batch)
+                # assembled_actor_gradient = actor_gradient_batch[0]
+                # assembled_critic_gradient = critic_gradient_batch[0]
+                # for i in range(len(actor_gradient_batch) - 1):
+                #     for j in range(len(assembled_actor_gradient)):
+                #             assembled_actor_gradient[j] += actor_gradient_batch[i][j]
+                #             assembled_critic_gradient[j] += critic_gradient_batch[i][j]
+                # actor.apply_gradients(assembled_actor_gradient)
+                # critic.apply_gradients(assembled_critic_gradient)
+                for i in range(len(actor_gradient_batch)):
+                    actor.apply_gradients(actor_gradient_batch[i], current_learning_rate)
+                    critic.apply_gradients(critic_gradient_batch[i])
+
+                # log training information
+                epoch += 1
+                avg_reward = total_reward / total_agents
+                avg_td_loss = total_td_loss / total_batch_len
+                avg_entropy = total_entropy / total_batch_len
+
+                logging.info('Epoch: ' + str(epoch) +
+                             ' TD_loss: ' + str(avg_td_loss) +
+                             ' Avg_reward: ' + str(avg_reward) +
+                             ' Avg_entropy: ' + str(avg_entropy))
+                log_writer.writerow([epoch, avg_td_loss, avg_reward, avg_entropy])
+
+                # summary_str = sess.run(summary_ops, feed_dict={
+                #     summary_vars[0]: avg_td_loss,
+                #     summary_vars[1]: avg_reward,
+                #     summary_vars[2]: avg_entropy
+                # })
+
+                # writer.add_summary(summary_str, epoch)
+                # writer.flush()
+
+                if epoch % 500 == 0:
+                    # # Visdom log and plot
+
+                    val_rewards = [self._test(
+                        actor, trace, video_size_file_dir=self.video_size_file_dir,
+                        save_dir=os.path.join(save_dir, "val_logs")) for trace in self.val_traces]
+                    val_mean_reward = np.mean(val_rewards)
+
+                    val_log_writer.writerow(
+                            [epoch, np.min(val_rewards),
+                             np.percentile(val_rewards, 5), np.mean(val_rewards),
+                             np.median(val_rewards), np.percentile(val_rewards, 95),
+                             np.max(val_rewards)])
+                    val_epochs.append(epoch)
+                    val_mean_rewards.append(val_mean_reward)
+                    average_rewards.append(np.sum(avg_reward))
+                    average_entropies.append(avg_entropy)
+
+                    # suffix = args.start_time
+                    # if args.description is not None:
+                    #     suffix = args.description
+                    # curve = dict(x=val_epochs, y=val_mean_rewards,
+                    #              mode="markers+lines", type='custom',
+                    #              marker={'color': plot_color,
+                    #                      'symbol': 104, 'size': "5"},
+                    #              text=["one", "two", "three"], name='1st Trace')
+                    # layout = dict(title="Pensieve_Val_Reward " + suffix,
+                    #               xaxis={'title': 'Epoch'},
+                    #               yaxis={'title': 'Mean Reward'})
+                    # vis._send(
+                    #     {'data': [curve], 'layout': layout,
+                    #      'win': 'Pensieve_val_mean_reward'})
+                    # curve = dict(x=val_epochs, y=average_rewards,
+                    #              mode="markers+lines", type='custom',
+                    #              marker={'color': plot_color,
+                    #                      'symbol': 104, 'size': "5"},
+                    #              text=["one", "two", "three"], name='1st Trace')
+                    # layout = dict(title="Pensieve_Training_Reward " + suffix,
+                    #               xaxis={'title': 'Epoch'},
+                    #               yaxis={'title': 'Mean Reward'})
+                    # vis._send(
+                    #     {'data': [curve], 'layout': layout,
+                    #      'win': 'Pensieve_training_mean_reward'})
+                    # curve = dict(x=val_epochs, y=average_entropies,
+                    #              mode="markers+lines", type='custom',
+                    #              marker={'color': plot_color,
+                    #                      'symbol': 104, 'size': "5"},
+                    #              text=["one", "two", "three"], name='1st Trace')
+                    # layout = dict(title="Pensieve_Training_Mean Entropy " + suffix,
+                    #               xaxis={'title': 'Epoch'},
+                    #               yaxis={'title': 'Mean Entropy'})
+                    # vis._send(
+                    #     {'data': [curve], 'layout': layout,
+                    #      'win': 'Pensieve_training_mean_entropy'})
+
+                    # if val_mean_reward > max_avg_reward:
+                    max_avg_reward = val_mean_reward
+                    # Save the neural net parameters to disk.
+                    save_path = saver.save(
+                        sess,
+                        os.path.join(save_dir, "model_saved", f"nn_model_ep_{epoch}.ckpt"))
+                    logging.info("Model saved in file: " + save_path)
+
+                end_t = time.time()
+                # print(f'epoch{epoch-1}: {end_t - start_t}s')
+
+        for tmp_agent in agents:
+            tmp_agent.terminate()
+
+        # 2) Spawn agent processes
+        agents = []
         for i in range(self.num_agents):
-            agents[i].join()
+            p = mp.Process(
+                target=agent,
+                args=(
+                    i,
+                    net_params_queues[i],
+                    exp_queues[i],
+                    train_envs,
+                    self.log_dir,
+                    self.batch_size,
+                    self.randomization,
+                    self.randomization_interval,
+                    self.num_agents
+                )
+            )
+            p.start()
+            agents.append(p)
 
-    def select_action(self, state):
-        bit_rate, action_prob_vec = self.net.select_action(state)
-        return bit_rate, action_prob_vec
+        # 3) Central agent: gather experiences, do updates
+        self.central_agent(
+            net_params_queues, exp_queues, iters, train_envs,
+            val_envs=None, test_envs=None, use_replay_buffer=use_replay_buffer
+        )
+
+        # 4) Wait for all agent processes to finish
+        for p in agents:
+            p.join()
+
+    def calculate_from_selection(self, selected ,last_bit_rate):
+        # selected_action is 0-5
+        # naive step implementation
+        if selected == 1:
+            bit_rate = last_bit_rate
+        elif selected == 2:
+            bit_rate = last_bit_rate + 1
+        else:
+            bit_rate = last_bit_rate - 1
+        # bound
+        if bit_rate < 0:
+            bit_rate = 0
+        if bit_rate > 5:
+            bit_rate = 5
+
+        # print(bit_rate)
+        return bit_rate
+
+    def select_action(self, state, last_bit_rate):
+        action_prob = self.net.predict( np.reshape( state ,(1 ,6 ,6) ) )
+        action_cumsum = np.cumsum( action_prob )
+        selection = (action_cumsum > np.random.randint(
+            1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
+        bit_rate = self.calculate_from_selection( selection ,last_bit_rate )
+        return bit_rate
 
     def evaluate(self, net_env, save_dir=None):
         torch.set_num_threads(1)
@@ -281,230 +602,214 @@ class Pensieve(BaseAgentPolicy):
         for i in range(self.num_agents):
             net_params_queues[i].put("exit")
 
-
-def agent(agent_id, net_params_queue, exp_queue, net_envs, summary_dir,
-          batch_size, randomization, randomization_interval, num_agents):
-    """Pensieve agent.
-
-    Performs inference and collect states, rewards, etc.
+def build_state(msg, agent_state):
     """
-    torch.set_num_threads(1)
-    epoch = 0
-    if 'udr' in randomization:
-        os.makedirs(os.path.join(summary_dir, "train_envs"), exist_ok=True)
-        for env_idx, net_env in enumerate(net_envs):
-            env_log_file = os.path.join(
-                summary_dir, "train_envs",
-                "env{}_agent{}_epoch{}.json".format(env_idx, agent_id, epoch))
-            env_dims = net_env.get_dimension_values()
-            env_dims['trace_time'] = net_env.trace_time
-            env_dims['trace_bw'] = net_env.trace_bw
-            write_json_file(env_log_file, env_dims)
-    if randomization == 'even_udr':
-        for net_env in net_envs:
-            for name, dim in net_env.dimensions.items():
-                if dim.min_value != dim.max_value:
-                    bounds = np.linspace(dim.min_value, dim.max_value,
-                                         num_agents+1)
-                    net_env.dimensions[name].min_value = bounds[agent_id]
-                    net_env.dimensions[name].max_value = bounds[agent_id+1]
-    # set random seed
-    prng = np.random.RandomState(agent_id)
-    # print(str(net_envs[0].get_dims_with_rand()['buffer_threshold']))
+    msg: dict with {"last_quality":..., "rebuffer_time":..., "chunk_fetch_time":..., ...}
+    agent_state: the [S_INFO, S_LEN] array you're updating
+    """
+    # SHIFT the existing columns left
+    agent_state = np.roll(agent_state, -1, axis=-1)
 
-    with open(os.path.join(summary_dir,
-                           'log_agent_'+str(agent_id)), 'w', 1) as log_file:
-        csv_writer = csv.writer(log_file, delimiter='\t', lineterminator="\n")
-        # 'time_stamp', 'bit_rate', 'buffer_size',
-        # 'rebuffer', 'video_chunk_size', 'delay','chunk_idx',
-        csv_writer.writerow(['epoch', 'avg_chunk_reward',  'trace_name',
-                             'video_chunk_length', 'buffer_threshold',
-                             'link_rtt', 'drain_buffer_sleep_time',
-                             'packet_payload_portion', 'T_l', 'T_s', 'cov',
-                             'duration', 'step', 'min_throughput',
-                             'max_throughput'])
+    # For example, store last_quality normalized by max bit_rate=5
+    agent_state[0, -1] = msg["last_quality"] / 5.0  
+    agent_state[1, -1] = msg["rebuffer_time"] / 1000.0
+    agent_state[2, -1] = msg["chunk_fetch_time"] / 1000.0
+    # etc.
 
-        # initial synchronization of the network parameters from the
-        # coordinator
-        net = A3C(False, [S_INFO, S_LEN], A_DIM, ACTOR_LR_RATE, CRITIC_LR_RATE)
-        actor_net_params = net_params_queue.get()
-        if actor_net_params == "exit":
-            return
-        net.hard_update_actor_network(actor_net_params)
+    return agent_state
 
-        time_stamp = 0
-        env_idx = prng.randint(len(net_envs))
-        net_env = net_envs[env_idx]
+def compute_reward(msg, bit_rate, last_quality):
+    """
+    msg: dict describing the chunk
+    bit_rate: chosen action (0..5)
+    last_quality: previous action
+    """
+    # e.g. you can do a "smoothness" penalty or rebuffer penalty:
+    rebuffer_sec = msg["rebuffer_time"] / 1000.0
+    video_quality = VIDEO_BIT_RATE[bit_rate]
+    previous_quality = VIDEO_BIT_RATE[last_quality]
+    reward = video_quality \
+        - 4.3 * rebuffer_sec \
+        - abs(video_quality - previous_quality)
+    return reward
+
+
+def agent(agent_id, net_params_queue, exp_queue, train_envs,
+          summary_dir, batch_size, randomization, randomization_interval,
+          num_agents):
+    """
+    Each agent process picks an environment (delay, trace) from train_envs,
+    starts a Mahimahi shell, runs the virtual_browser, collects data, etc.
+    Then sends experiences to the central agent.
+    """
+
+
+    # 1) Create redis for state/action communication
+    redis_client = redis.Redis(host="127.0.0.1", port=6379, decode_responses=True)
+    redis_client.set(f"{agent_id}_action_flag", int(False))
+
+    with tf.compat.v1.Session() as sess:
+        # , open(os.path.join(
+        #     save_dir, f'log_agent_{agent_id}'), 'w') as log_file:
+
+        # log_file.write('\t'.join(['time_stamp', 'bit_rate', 'buffer_size',
+        #                'rebuffer', 'video_chunk_size', 'delay', 'reward',
+        #                'epoch', 'trace_idx', 'mahimahi_ptr'])+'\n')
+        actor = a3c.ActorNetwork(sess, state_dim=[S_INFO, S_LEN],
+                                    action_dim=A_DIM, bitrate_dim=BITRATE_DIM)
+                                    # learning_rate=args.ACTOR_LR_RATE)
+        critic = a3c.CriticNetwork(sess, state_dim=[S_INFO, S_LEN],
+                                    learning_rate=CRITIC_LR_RATE,
+                                    bitrate_dim=BITRATE_DIM)
+
+        # initial synchronization of the network parameters from the coordinator
+        actor_net_params, critic_net_params = net_params_queue.get()
+        actor.set_network_params(actor_net_params)
+        critic.set_network_params(critic_net_params)
+
+        last_bit_rate = DEFAULT_QUALITY
+        selection = 0
         bit_rate = DEFAULT_QUALITY
-        s_batch = []
-        a_batch = []
+
+        action_vec = np.zeros(A_DIM)
+        action_vec[bit_rate] = 1
+
+        s_batch = [np.zeros((S_INFO, S_LEN))]
+        a_batch = [action_vec]
         r_batch = []
-        video_chunk_rewards = []
         entropy_record = []
-        is_1st_step = True
-        epoch_randomization = 0  # track in which epoch randomization occurs
+
+        # time_stamp = 0
+        epoch = 0
+
+        # 2) Example: each agent randomly picks from train_envs
+        env_config = random.choice(train_envs)
+        delay_val = env_config["delay"]
+        trace_path = env_config["trace_file"]
+
+        # 3) Launch Mahimahi + virtual browser
+        #    - This spawns mm-delay + mm-link, then runs the virtual browser
+        mahimahi_dir = "src/emulator/abr"
+        mm_cmd = (
+            f'mm-delay {delay_val} mm-loss uplink 0 mm-loss downlink 0 mm-link {UP_LINK_SPEED_FILE} {trace_path} -- bash -c \"python -m pensieve.virtual_browser.virtual_browser --ip \$MAHIMAHI_BASE --port 8000 --abr RL --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/mpc_{agent_id}_{delay_val} --trace-file {trace_path} --abr-server-port=8322\"'
+        )
+        # print (mm_cmd)
+        print(f"[Agent {agent_id}] Starting environment:\n{mm_cmd}")
+        mm_proc = subprocess.Popen(mm_cmd, shell=True, cwd=mahimahi_dir)
+
+        # 7) Wait for next net params or state update or exit
         while True:
+            redis_pipe = redis_client.pipeline(transaction=True)
+            redis_pipe.set(f"{agent_id}_action", str(bit_rate))
+            redis_pipe.set(f"{agent_id}_action_flag", int(True))
+            try:
+                redis_pipe.execute()
+            except Exception as e:
+                print(f"Exception {e}")
 
-            # the action is from the last decision
-            # this is to make the framework similar to the real
-            state, reward, end_of_video, info = net_env.step(bit_rate)
+            # read from redis
+            recv_state = False
+            while not recv_state:
+                # print(f"[Agent {agent_id}] Waiting for next net params or state update or exit.")
+                redis_pipe = redis_client.pipeline(transaction=True)
+                redis_pipe.get(f"{agent_id}_state")
+                redis_pipe.get(f"{agent_id}_reward")
+                redis_pipe.get(f"{agent_id}_state_flag")
+                redis_pipe.set(f"{agent_id}_state_flag", int(False))
+                try:
+                    retval = redis_pipe.execute()
+                except Exception as e:
+                    print(f"Exception {e}")
+                #print(f"Retval {retval}")
+                if retval[2] is not None:
+                    if int(retval[2]):
+                        state = json.loads(retval[0])
+                        reward = float(retval[1])
+                        print(f"[Agent {agent_id}] Received state: {state}.")
+                        recv_state = True
+                end_of_video = redis_client.get(f"{agent_id}_stop_flag")
+                if end_of_video:
+                    recv_state = True
 
-            bit_rate, action_prob_vec = net.select_action(state)
-            bit_rate = bit_rate.item()
-            # Note: we need to discretize the probability into 1/RAND_RANGE
-            # steps, because there is an intrinsic discrepancy in passing
-            # single state and batch states
+            # last_quality = msg["last_quality"]
 
-            time_stamp += info['delay']  # in ms
-            time_stamp += info['sleep_time']  # in ms
-            if not is_1st_step:
-                s_batch.append(state)
-                a_batch.append(bit_rate)
-                r_batch.append(reward)
-                video_chunk_rewards.append(reward)
-                entropy_record.append(compute_entropy(action_prob_vec)[0])
-            else:
-                # ignore the first chunck since we can't control it
-                is_1st_step = False
+            # 6c) Build your "state" from msg
+            #     or keep a rolling agent_state if you do Pensieve style [S_INFO=6,S_LEN=8]
 
-            # log time_stamp, bit_rate, buffer_size, reward
-            env_params = net_env.get_dimension_values()
-            if len(s_batch) == batch_size:
-                exp_queue.put([np.concatenate(s_batch), np.array(a_batch),
-                               np.array(r_batch), end_of_video,
-                               {'entropy': np.array(entropy_record)}])
+            state = np.array(state)
+            r_batch.append(reward)
+            # time_stamp += delay  # in ms
+            # time_stamp += sleep_time  # in ms  
 
-                actor_net_params = net_params_queue.get()
-                if actor_net_params == "exit":
-                    break
-                net.hard_update_actor_network(actor_net_params)
-                s_batch = []
-                a_batch = []
-                r_batch = []
-                entropy_record = []
-                epoch += 1
+            # -- linear reward --
+            # reward is video quality - rebuffer penalty - smoothness
+            # reward = linear_reward(VIDEO_BIT_RATE[bit_rate], 
+            #                     VIDEO_BIT_RATE[last_bit_rate], rebuf)
+
+            # 6d) Decide on an action (bit_rate) based on current policy and send bit_rate back
+            action_prob = actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
+            if np.isnan(action_prob[0, 0]) and agent_id == 0:
+                print(epoch)
+                print(state, "state")
+                print(action_prob, "action prob")
+                import pdb
+                pdb.set_trace()
+            action_cumsum = np.cumsum(action_prob)
+            bit_rate = (
+                action_cumsum
+                > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)
+            ).argmax()
+
+            entropy_record.append(a3c.compute_entropy(action_prob[0]))
+
+            # report experience to the coordinator
+            print(f"[Agent {agent_id}] check to send experience to central agent: {s_batch}, {a_batch}, {r_batch}.")
+            print(len(r_batch), TRAIN_SEQ_LEN, end_of_video)
+            end_of_video = redis_client.get(f"{agent_id}_stop_flag")
+            if len(r_batch) >= TRAIN_SEQ_LEN or end_of_video:
+                print()
+                exp_queue.put([s_batch[1:],  # ignore the first chuck
+                            a_batch[1:],  # since we don't have the
+                            r_batch[1:],  # control over it
+                            end_of_video,
+                            {'entropy': entropy_record}])
+                print(f"[Agent {agent_id}] sent experience to central agent: {s_batch}, {a_batch}, {r_batch}.")
+
+                # synchronize the network parameters from the coordinator
+                actor_net_params, critic_net_params = net_params_queue.get()
+                actor.set_network_params(actor_net_params)
+                critic.set_network_params(critic_net_params)
+
+                del s_batch[:]
+                del a_batch[:]
+                del r_batch[:]
+                del entropy_record[:]
+
+                # so that in the log we know where video ends
+
+            # store the state and action into batches
             if end_of_video:
-                # time_stamp, VIDEO_BIT_RATE[bit_rate],
-                #                      info['buffer_size'], info['rebuf'],
-                #                      info['video_chunk_size'], info['delay'],
-                # net_env.nb_chunk_sent,
-                csv_writer.writerow([epoch,
-                                     np.mean(np.array(video_chunk_rewards)),
-                                     net_env.trace_file_name,
-                                     env_params['video_chunk_length'],
-                                     env_params['buffer_threshold'],
-                                     env_params['link_rtt'],
-                                     env_params['drain_buffer_sleep_time'],
-                                     env_params['packet_payload_portion'],
-                                     env_params['T_l'],
-                                     env_params['T_s'],
-                                     env_params['cov'],
-                                     env_params['duration'],
-                                     env_params['step'],
-                                     env_params['min_throughput'],
-                                     env_params['max_throughput']])
-                net_env.reset(random_start=True)
-                if randomization == '':
-                    pass  # no randomization
-                elif 'udr' in randomization:
-                    if epoch - epoch_randomization >= randomization_interval:
-                        for tmp_env in net_envs:
-                            tmp_env.randomize(None)
-                        epoch_randomization = epoch
-                        os.makedirs(os.path.join(summary_dir, "train_envs"),
-                                    exist_ok=True)
-                        for env_idx, net_env in enumerate(net_envs):
-                            env_log_file = os.path.join(
-                                summary_dir, "train_envs",
-                                "env{}_agent{}_epoch{}.json".format(
-                                    env_idx, agent_id, epoch))
-                            env_dims = net_env.get_dimension_values()
-                            env_dims['trace_time'] = net_env.trace_time
-                            env_dims['trace_bw'] = net_env.trace_bw
-                            write_json_file(env_log_file, env_dims)
-                else:
-                    raise NotImplementedError
-                env_idx = prng.randint(len(net_envs))
-                net_env = net_envs[env_idx]
-                bit_rate = DEFAULT_QUALITY
-                time_stamp = 0
-                is_1st_step = True
-                video_chunk_rewards = []
+                last_bit_rate = DEFAULT_QUALITY
+                bit_rate = DEFAULT_QUALITY  # use the default action here
+                #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
+                action_vec = np.zeros(A_DIM)
+                action_vec[bit_rate] = 1
+                s_batch.append(np.zeros((S_INFO, S_LEN)))
+                a_batch.append(action_vec)
+                epoch += 1
 
+            else:
+                s_batch.append(state)
 
-class ReplayBuffer(object):
-    """Simple replay buffer."""
+                #print(bit_rate)
+                #action_vec = np.zeros(args.A_DIM)
+                #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
+                action_vec = np.zeros(A_DIM)
+                action_vec[bit_rate] = 1
+                #print(action_vec)
+                a_batch.append(action_vec)
 
-    def __init__(self, max_size=1e6):
-        self.storage = []
-        self.max_size = int(max_size)
-        self.next_idx = 0
+        # 4) Wait for the environment to finish
+        mm_proc.wait()
 
-    def add(self, data: Tuple):
-        """Add tuples of (state, action, reward)."""
-        assert len(data) == 4
-        if self.next_idx >= len(self.storage):
-            self.storage.append(data)
-        else:
-            self.storage[self.next_idx] = data
-
-        self.next_idx = (self.next_idx + 1) % self.max_size
-
-    def sample(self, batch_size: int = 100):
-        """Randomly sample batch_size of (state, action, reward)."""
-        print("sample", len(self.storage))
-        ind = np.random.randint(0, len(self.storage), size=batch_size)
-        states, actions, rewards, entropies = [], [], [], []
-
-        for i in ind:
-            state, action, reward, entropy = self.storage[i]
-            states.append(np.array(state, copy=False))
-            actions.append(np.array(action, copy=False))
-            rewards.append(np.array(reward, copy=False))
-            entropies.append(np.array(entropy, copy=False))
-
-        return np.array(states), np.array(actions), np.array(rewards), np.array(entropies)
-
-
-def compare_mpc_pensieve(pensieve_abr, val_envs, param_ranges):
-    num_small_ranges = 3
-    mpc_abr = RobustMPC()
-    candidates = []
-    range_indices = []
-    for param in sorted(param_ranges):
-        boundaries = np.linspace(*param_ranges[param], num_small_ranges+1)
-        # need a seed here
-        values = [np.random.uniform(lower, upper)
-                  for lower, upper in zip(boundaries[:-1], boundaries[1:])]
-        candidates.append(values)
-        range_indices.append(list(range(num_small_ranges)))
-
-    mpc_pensieve_reward_diffs = []
-    for param_tuple in itertools.product(*candidates):
-        randomized_values = {}
-        for param, value in zip(sorted(param_ranges), param_tuple):
-            randomized_values[param] = value
-        print(param_tuple, randomized_values)
-        for net_env in val_envs:
-            net_env.randomize(randomized_values)
-        mpc_results = mpc_abr.evaluate_envs(val_envs)
-        pensieve_results = pensieve_abr.evaluate_envs(val_envs)
-        mpc_reward = np.mean(np.concatenate(
-            [np.array(vid_results)[1:, -2] for vid_results in mpc_results]))
-        pensieve_reward = np.mean(np.concatenate(
-            [np.array(vid_results)[1:, -1]
-                for vid_results in pensieve_results]))
-        mpc_pensieve_reward_diffs.append(mpc_reward - pensieve_reward)
-    print(mpc_pensieve_reward_diffs)
-    max_gap_range_idx = np.argmax(mpc_pensieve_reward_diffs)
-    final_range_idices = list(itertools.product(
-        *range_indices))[max_gap_range_idx]
-    print(mpc_pensieve_reward_diffs[max_gap_range_idx], final_range_idices)
-
-    selected_ranges = {}
-    for param, range_idx in zip(sorted(param_ranges), final_range_idices):
-        boundaries = np.linspace(*param_ranges[param], num_small_ranges+1)
-        selected_ranges[param] = (boundaries[:-1][range_idx],
-                                  boundaries[1:][range_idx])
-    print(selected_ranges)
-    return selected_ranges
+        print(f"[Agent {agent_id}] finished.")
