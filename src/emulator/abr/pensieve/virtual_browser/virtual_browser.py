@@ -12,9 +12,9 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import redis
 redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
-print("Ping")
+# print("Ping")
 redis_client.ping()
-print("Ping 2")
+print("Redis ping successful")
 
 from pensieve.virtual_browser.abr_server import run_abr_server
 
@@ -52,7 +52,7 @@ def parse_args():
                         choices=['RobustMPC', 'RL', 'FastMPCchromedriver'
                                  'Default', 'FixedRate',
                                  'BufferBased', 'RateBased', 'Festive',
-                                 'Bola'], help='ABR algorithm.')
+                                 'Bola', 'RLTrain'], help='ABR algorithm.')
     parser.add_argument('--actor-path', type=str, default=None,
                         help='Path to RL model.')
 
@@ -63,7 +63,7 @@ def parse_args():
                         help='Path to trace file.')
     parser.add_argument("--video-size-file-dir", type=str, required=True,
                         help='Dir to video size files')
-    parser.add_argument('--run_time', type=int, default=240,
+    parser.add_argument('--run_time', type=int, default=240000,
                         help="Running time.")
 
     # networking related
@@ -225,6 +225,7 @@ def main():
     # ip = json.loads(urlopen("http://ip.jsontest.com/").read().decode('utf-8'))['ip']
     # url = 'http://{}/myindex_{}.html'.format(ip, abr_algo)
     print('Open', url)
+    redis_client.set("new_epoch", 0)
 
     # timeout signal
     signal.signal(signal.SIGALRM, timeout_handler)
@@ -264,8 +265,22 @@ def main():
                                   desired_capabilities=desired_caps)
 
         # run chrome
+        num_epochs = 75000
         driver.set_page_load_timeout(10)
         driver.get(url)
+        redis_client.set("browser_active", 1)
+        count = 1
+        while count < num_epochs:
+            sleep(10)
+            new_epoch = redis_client.get("new_epoch")
+            print("new_epoch: ", new_epoch)
+            # print("new_epoch: ", type(new_epoch))
+            if new_epoch and int(new_epoch) == 1:
+                count += 1
+                print("Get new url with count: ", count)
+                driver.get(url)
+                redis_client.set("new_epoch", 0)
+                redis_client.set("browser_active", 1)
 
         if args.train:
             print("Video streaming started. Training in progress...")
@@ -274,6 +289,7 @@ def main():
             print("Training logs will be saved to", args.summary_dir)
         
         sleep(run_time)
+        abr_server_proc.wait()
 
         driver.quit()
         display.stop()

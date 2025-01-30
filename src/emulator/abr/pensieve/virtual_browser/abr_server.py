@@ -8,13 +8,13 @@ import sys
 import time
 import json
 import redis
-print("Pong")
+# print("Pong")
 redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
-print("Ping")
+print("Ping Redis success")
 redis_client.ping()
 import numpy as np
 
-from pensieve.agent_policy import Pensieve, RobustMPC, BufferBased, FastMPC
+from pensieve.agent_policy import Pensieve, RobustMPC, BufferBased, FastMPC, RLTrain
 from pensieve.a3c.a3c_jump import ActorNetwork
 
 from pensieve.constants import (
@@ -105,7 +105,7 @@ def make_request_handler(server_states):
                       post_data['bandwidthEst'],
                       post_data['nextChunkSize'],
                   ))
-            print(f"Post Data {post_data}")
+            # print(f"Post Data {post_data}")
             if ('pastThroughput' in post_data):
                 print("Summary: ", post_data)
             else:
@@ -163,12 +163,12 @@ def make_request_handler(server_states):
                     self.server_states['state'][0, 4, :A_DIM] = state4
                     self.server_states['state'][0, 5, -1] = state5
                     state_msg = self.server_states['state'].tolist()
-                    print("Test sfas ")
+                    # print("Test sfas ")
                     print(f"redis pipe get {self.redis_client.get('0_action_flag')}")
-                    print (f"Server State {state_msg}")
-                    print("Pipe Set")
+                    # print (f"Server State {state_msg}")
+                    # print("Pipe Set")
                     redis_pipe = self.redis_client.pipeline(transaction=True)
-                    print("Pipe Unset")
+                    # print("Pipe Unset")
                     redis_pipe.set(f"{self.agent_id}_state", json.dumps(state_msg))
                     redis_pipe.set(f"{self.agent_id}_reward", reward)
                     redis_pipe.set(f"{self.agent_id}_state_flag", int(True))
@@ -215,6 +215,7 @@ def make_request_handler(server_states):
                                  for i in sorted( self.video_size )] ) ,
                             post_data['lastquality'] ,post_data['buffer'] )
                 elif isinstance(self.abr, RLTrain):
+                    # print("RLTrain selects action")
                     action_recv = False
                     while not action_recv:
                         
@@ -227,17 +228,21 @@ def make_request_handler(server_states):
                             retval = redis_pipe.execute()
                         except Exception as e:
                             print(f"Exception execute {e}")
-                        if int(retval[1]):
+                        if retval[1] and int(retval[1]):
                             bit_rate = int(retval[0])
                             action_recv = True
+                            print(f"RLTrain received action {bit_rate}")
                 else:
                     raise TypeError("Unsupported ABR type.")
 
                 send_data = str(bit_rate)
 
-                end_of_video = post_data['lastRequest'] == TOTAL_VIDEO_CHUNK
+                end_of_video = post_data['lastRequest'] == TOTAL_VIDEO_CHUNK - 1
+                # print("last request", post_data['lastRequest'])
+                # print("Total video chunk", TOTAL_VIDEO_CHUNK)
                 if end_of_video:
                     # send_data = "REFRESH"
+                    print("End of video")
                     send_data = "stop"  # TODO: do not refresh the webpage and wait for timeout
                     self.server_states['last_total_rebuf'] = 0
                     self.server_states['last_bit_rate'] = DEFAULT_QUALITY
@@ -294,6 +299,8 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
             abr = Pensieve(16, summary_dir, actor=actor)
         elif abr == 'BufferBased':
             abr = BufferBased()
+        elif abr == 'RLTrain':
+            abr = RLTrain()
         else:
             raise ValueError("ABR {} is not supported!".format(abr))
 
@@ -392,7 +399,7 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
 #         }
 
 #         # Start training process
-#         train_proc = mp.Process(target=run_training_loop, 
+#         train_proc = mp.Process(video_sizetarget=run_training_loop, 
 #                                args=(abr, net_params_queues, exp_queues, args))
 #         train_proc.start()
 
@@ -423,7 +430,7 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
 #         abr.train(
 #             train_envs=None,  # Not used in emulation mode
 #             val_envs=val_envs,
-#             iters=args.num_epochs,
+#             iters=args.num_epocvideo_sizes,
 #             net_params_queues=net_params_queues,
 #             exp_queues=exp_queues
 #         )

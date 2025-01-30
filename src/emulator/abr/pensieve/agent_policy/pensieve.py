@@ -17,7 +17,7 @@ import sys
 sys.path.append('/users/janechen/Genet/src')    
 sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve")
 print(sys.path)
-from simulator.abr_simulator.pensieve import a3c
+from emulator.abr.pensieve import a3c
 from emulator.abr.pensieve.utils import linear_reward
 
 
@@ -47,7 +47,6 @@ MILLISECONDS_IN_SECOND = 1000.0
 B_IN_MB = 1000000.0
 BITS_IN_BYTE = 8.0
 VIDEO_CHUNK_LEN = 4000.0  # millisec, every time add this amount to buffer
-TOTAL_VIDEO_CHUNK = 49
 PACKET_SIZE = 1500  # bytes
 NOISE_LOW = 0.9
 NOISE_HIGH = 1.1
@@ -235,13 +234,13 @@ class Pensieve():
                 current_learning_rate =  0.0001 # learning_rate_decay_func(epoch)
 
                 for i in range(self.num_agents):
-                    print(f"Initial s_batch: {s_batch}")
+                    # print(f"Initial s_batch: {s_batch}")
                     s_batch, a_batch, r_batch, terminal, info = exp_queues[i].get()
                     print(f"After getting exp_queues: {s_batch}")
-
-                    print(f"s_batch shape: {np.squeeze(np.stack(s_batch, axis=0), axis=1).shape}")
-                    print(f"a_batch shape: {np.vstack(a_batch).shape}")
-                    print(f"r_batch shape: {np.vstack(r_batch).shape}")
+                    print("s_batch size: ", len(s_batch))
+                    # print(f"s_batch shape: {np.squeeze(np.stack(s_batch, axis=0), axis=1).shape}")
+                    # print(f"a_batch shape: {np.vstack(a_batch).shape}")
+                    # print(f"r_batch shape: {np.vstack(r_batch).shape}")
                     actor_gradient, critic_gradient, td_batch = \
                         a3c.compute_gradients(
                             s_batch=np.squeeze(np.stack(s_batch, axis=0), axis=1),
@@ -296,23 +295,23 @@ class Pensieve():
                 # writer.add_summary(summary_str, epoch)
                 # writer.flush()
 
-                if epoch % 500 == 0:
+                if epoch % 10 == 0:
                     # # Visdom log and plot
 
-                    val_rewards = [self._test(
-                        actor, trace, video_size_file_dir=self.video_size_file_dir,
-                        save_dir=os.path.join(save_dir, "val_logs")) for trace in self.val_traces]
-                    val_mean_reward = np.mean(val_rewards)
+                    # val_rewards = [self._test(
+                    #     actor, trace, video_size_file_dir=self.video_size_file_dir,
+                    #     save_dir=os.path.join(save_dir, "val_logs")) for trace in self.val_traces]
+                    # val_mean_reward = np.mean(val_rewards)
 
-                    val_log_writer.writerow(
-                            [epoch, np.min(val_rewards),
-                             np.percentile(val_rewards, 5), np.mean(val_rewards),
-                             np.median(val_rewards), np.percentile(val_rewards, 95),
-                             np.max(val_rewards)])
-                    val_epochs.append(epoch)
-                    val_mean_rewards.append(val_mean_reward)
-                    average_rewards.append(np.sum(avg_reward))
-                    average_entropies.append(avg_entropy)
+                    # val_log_writer.writerow(
+                    #         [epoch, np.min(val_rewards),
+                    #          np.percentile(val_rewards, 5), np.mean(val_rewards),
+                    #          np.median(val_rewards), np.percentile(val_rewards, 95),
+                    #          np.max(val_rewards)])
+                    # val_epochs.append(epoch)
+                    # val_mean_rewards.append(val_mean_reward)
+                    # average_rewards.append(np.sum(avg_reward))
+                    # average_entropies.append(avg_entropy)
 
                     # suffix = args.start_time
                     # if args.description is not None:
@@ -352,7 +351,7 @@ class Pensieve():
                     #      'win': 'Pensieve_training_mean_entropy'})
 
                     # if val_mean_reward > max_avg_reward:
-                    max_avg_reward = val_mean_reward
+                    # max_avg_reward = val_mean_reward
                     # Save the neural net parameters to disk.
                     save_path = saver.save(
                         sess,
@@ -683,6 +682,8 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
         # time_stamp = 0
         epoch = 0
+        state = None
+        reward = None
 
         # 2) Example: each agent randomly picks from train_envs
         env_config = random.choice(train_envs)
@@ -693,7 +694,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         #    - This spawns mm-delay + mm-link, then runs the virtual browser
         mahimahi_dir = "src/emulator/abr"
         mm_cmd = (
-            f'mm-delay {delay_val} mm-loss uplink 0 mm-loss downlink 0 mm-link {UP_LINK_SPEED_FILE} {trace_path} -- bash -c \"python -m pensieve.virtual_browser.virtual_browser --ip \$MAHIMAHI_BASE --port 8000 --abr RL --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/mpc_{agent_id}_{delay_val} --trace-file {trace_path} --abr-server-port=8322\"'
+            f'mm-delay {delay_val} mm-loss uplink 0 mm-loss downlink 0 mm-link {UP_LINK_SPEED_FILE} {trace_path} -- bash -c \"python -m pensieve.virtual_browser.virtual_browser --ip \$MAHIMAHI_BASE --port 8000 --abr RLTrain --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/mpc_{agent_id}_{delay_val} --trace-file {trace_path} --abr-server-port=8322\"'
         )
         # print (mm_cmd)
         print(f"[Agent {agent_id}] Starting environment:\n{mm_cmd}")
@@ -701,115 +702,127 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
         # 7) Wait for next net params or state update or exit
         while True:
-            redis_pipe = redis_client.pipeline(transaction=True)
-            redis_pipe.set(f"{agent_id}_action", str(bit_rate))
-            redis_pipe.set(f"{agent_id}_action_flag", int(True))
-            try:
-                redis_pipe.execute()
-            except Exception as e:
-                print(f"Exception {e}")
-
-            # read from redis
-            recv_state = False
-            while not recv_state:
-                # print(f"[Agent {agent_id}] Waiting for next net params or state update or exit.")
+            browser_active = redis_client.get("browser_active")
+            # print("browser_active", browser_active)
+            if browser_active and int(browser_active) == 1:
                 redis_pipe = redis_client.pipeline(transaction=True)
-                redis_pipe.get(f"{agent_id}_state")
-                redis_pipe.get(f"{agent_id}_reward")
-                redis_pipe.get(f"{agent_id}_state_flag")
-                redis_pipe.set(f"{agent_id}_state_flag", int(False))
+                redis_pipe.set(f"{agent_id}_action", str(bit_rate))
+                redis_pipe.set(f"{agent_id}_action_flag", int(True))
                 try:
-                    retval = redis_pipe.execute()
+                    redis_pipe.execute()
                 except Exception as e:
                     print(f"Exception {e}")
-                #print(f"Retval {retval}")
-                if retval[2] is not None:
-                    if int(retval[2]):
-                        state = json.loads(retval[0])
-                        reward = float(retval[1])
-                        print(f"[Agent {agent_id}] Received state: {state}.")
+                # read from redis
+                recv_state = False
+                while not recv_state:
+                    # print(f"[Agent {agent_id}] Waiting for next net params or state update or exit.")
+                    redis_pipe = redis_client.pipeline(transaction=True)
+                    redis_pipe.get(f"{agent_id}_state")
+                    redis_pipe.get(f"{agent_id}_reward")
+                    redis_pipe.get(f"{agent_id}_state_flag")
+                    redis_pipe.set(f"{agent_id}_state_flag", int(False))
+                    try:
+                        retval = redis_pipe.execute()
+                    except Exception as e:
+                        print(f"Exception {e}")
+                    #print(f"Retval {retval}")
+                    if retval[2] is not None:
+                        if int(retval[2]):
+                            state = json.loads(retval[0])
+                            reward = float(retval[1])
+                            # print(f"[Agent {agent_id}] Received state: {state}.")
+                            recv_state = True
+                    end_of_video = redis_client.get(f"{agent_id}_stop_flag")
+                    if end_of_video and int(end_of_video) == 1:
                         recv_state = True
-                end_of_video = redis_client.get(f"{agent_id}_stop_flag")
-                if end_of_video:
-                    recv_state = True
 
-            # last_quality = msg["last_quality"]
+                # last_quality = msg["last_quality"]
 
-            # 6c) Build your "state" from msg
-            #     or keep a rolling agent_state if you do Pensieve style [S_INFO=6,S_LEN=8]
+                # 6c) Build your "state" from msg
+                #     or keep a rolling agent_state if you do Pensieve style [S_INFO=6,S_LEN=8]
+                if recv_state:
+                    state = np.array(state)
+                    r_batch.append(reward)
+                # time_stamp += delay  # in ms
+                # time_stamp += sleep_time  # in ms  
 
-            state = np.array(state)
-            r_batch.append(reward)
-            # time_stamp += delay  # in ms
-            # time_stamp += sleep_time  # in ms  
+                # -- linear reward --
+                # reward is video quality - rebuffer penalty - smoothness
+                # reward = linear_reward(VIDEO_BIT_RATE[bit_rate], 
+                #                     VIDEO_BIT_RATE[last_bit_rate], rebuf)
 
-            # -- linear reward --
-            # reward is video quality - rebuffer penalty - smoothness
-            # reward = linear_reward(VIDEO_BIT_RATE[bit_rate], 
-            #                     VIDEO_BIT_RATE[last_bit_rate], rebuf)
+                # 6d) Decide on an action (bit_rate) based on current policy and send bit_rate back
+                    action_prob = actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
+                    if np.isnan(action_prob[0, 0]) and agent_id == 0:
+                        print(epoch)
+                        print(state, "state")
+                        print(action_prob, "action prob")
+                        import pdb
+                        pdb.set_trace()
+                    action_cumsum = np.cumsum(action_prob)
+                    bit_rate = (
+                        action_cumsum
+                        > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)
+                    ).argmax()
 
-            # 6d) Decide on an action (bit_rate) based on current policy and send bit_rate back
-            action_prob = actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
-            if np.isnan(action_prob[0, 0]) and agent_id == 0:
-                print(epoch)
-                print(state, "state")
-                print(action_prob, "action prob")
-                import pdb
-                pdb.set_trace()
-            action_cumsum = np.cumsum(action_prob)
-            bit_rate = (
-                action_cumsum
-                > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)
-            ).argmax()
+                    entropy_record.append(a3c.compute_entropy(action_prob[0]))
 
-            entropy_record.append(a3c.compute_entropy(action_prob[0]))
+                    # report experience to the coordinator
+                    # print(f"[Agent {agent_id}] check to send experience to central agent, r_batch size {len(r_batch)}, TRAIN_SEQ_LEN {TRAIN_SEQ_LEN}, end_of_video {end_of_video}.")
+                    # print(len(r_batch), TRAIN_SEQ_LEN, end_of_video)
+                    end_of_video = redis_client.get(f"{agent_id}_stop_flag")
+                    if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
+                        exp_queue.put([s_batch[1:],  # ignore the first chuck
+                                    a_batch[1:],  # since we don't have the
+                                    r_batch[1:],  # control over it
+                                    end_of_video,
+                                    {'entropy': entropy_record}])
+                        print(f"[Agent {agent_id}] sent experience to central agent.")
+                        # print("s_batch shape: ", s_batch.shape)
+                        # print("sent state shape: ", s_batch[1:].shape)
 
-            # report experience to the coordinator
-            print(f"[Agent {agent_id}] check to send experience to central agent: {s_batch}, {a_batch}, {r_batch}.")
-            print(len(r_batch), TRAIN_SEQ_LEN, end_of_video)
-            end_of_video = redis_client.get(f"{agent_id}_stop_flag")
-            if len(r_batch) >= TRAIN_SEQ_LEN or end_of_video:
-                print()
-                exp_queue.put([s_batch[1:],  # ignore the first chuck
-                            a_batch[1:],  # since we don't have the
-                            r_batch[1:],  # control over it
-                            end_of_video,
-                            {'entropy': entropy_record}])
-                print(f"[Agent {agent_id}] sent experience to central agent: {s_batch}, {a_batch}, {r_batch}.")
+                        # synchronize the network parameters from the coordinator
+                        actor_net_params, critic_net_params = net_params_queue.get()
+                        actor.set_network_params(actor_net_params)
+                        critic.set_network_params(critic_net_params)
 
-                # synchronize the network parameters from the coordinator
-                actor_net_params, critic_net_params = net_params_queue.get()
-                actor.set_network_params(actor_net_params)
-                critic.set_network_params(critic_net_params)
+                        del s_batch[:]
+                        del a_batch[:]
+                        del r_batch[:]
+                        del entropy_record[:]
 
-                del s_batch[:]
-                del a_batch[:]
-                del r_batch[:]
-                del entropy_record[:]
+                        # so that in the log we know where video ends
 
-                # so that in the log we know where video ends
+                    # store the state and action into batches
+                    if end_of_video:
+                        last_bit_rate = DEFAULT_QUALITY
+                        bit_rate = DEFAULT_QUALITY  # use the default action here
+                        #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
+                        action_vec = np.zeros(A_DIM)
+                        action_vec[bit_rate] = 1
+                        s_batch.append(np.zeros((S_INFO, S_LEN)))
+                        a_batch.append(action_vec)
+                        epoch += 1
+                        # reset virtual browser
+                        print(f"[Agent {agent_id}] Resetting virtual browser.")
+                        redis_client.flushdb()
+                        redis_client.set("browser_active", 0)
+                        redis_client.set("new_epoch", 1)
 
-            # store the state and action into batches
-            if end_of_video:
-                last_bit_rate = DEFAULT_QUALITY
-                bit_rate = DEFAULT_QUALITY  # use the default action here
-                #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
-                action_vec = np.zeros(A_DIM)
-                action_vec[bit_rate] = 1
-                s_batch.append(np.zeros((S_INFO, S_LEN)))
-                a_batch.append(action_vec)
-                epoch += 1
+                    else:
+                        # print("Before append: ", s_batch)
+                        s_batch.append(state)
+                        # print("After append: ", s_batch)
 
+                        #print(bit_rate)
+                        #action_vec = np.zeros(args.A_DIM)
+                        #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
+                        action_vec = np.zeros(A_DIM)
+                        action_vec[bit_rate] = 1
+                        #print(action_vec)
+                        a_batch.append(action_vec)
             else:
-                s_batch.append(state)
-
-                #print(bit_rate)
-                #action_vec = np.zeros(args.A_DIM)
-                #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
-                action_vec = np.zeros(A_DIM)
-                action_vec[bit_rate] = 1
-                #print(action_vec)
-                a_batch.append(action_vec)
+                time.sleep(10)
 
         # 4) Wait for the environment to finish
         mm_proc.wait()

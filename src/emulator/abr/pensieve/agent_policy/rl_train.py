@@ -4,6 +4,7 @@ class RLTrain():
         self.fixed=fixed
 
     def select_action(self, state):
-        
+        raise NotImplementedError
 
-        return bit_rate
+    def evaluate(self, net_env):
+        raise NotImplementedError
