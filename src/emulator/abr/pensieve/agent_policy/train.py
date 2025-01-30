@@ -184,7 +184,8 @@ def main():
     # 2) Build the list of (delay, trace_file) pairs from --train-trace-dir
     #    plus a default delay_list = [5, 10, 20, 40, 80].
     ############################################################################
-    delay_list = [5, 10, 20, 40, 80]
+    # delay_list = [5, 10, 20, 40, 80]
+    delay_list = [40]
     trace_dir = args.train_trace_dir
     # print("Trace dir: {}".format(trace_dir))
     all_trace_files = []
