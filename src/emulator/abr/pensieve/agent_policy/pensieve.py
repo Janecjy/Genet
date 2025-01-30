@@ -364,35 +364,6 @@ class Pensieve():
         for tmp_agent in agents:
             tmp_agent.terminate()
 
-        # 2) Spawn agent processes
-        agents = []
-        for i in range(self.num_agents):
-            p = mp.Process(
-                target=agent,
-                args=(
-                    i,
-                    net_params_queues[i],
-                    exp_queues[i],
-                    train_envs,
-                    self.log_dir,
-                    self.batch_size,
-                    self.randomization,
-                    self.randomization_interval,
-                    self.num_agents
-                )
-            )
-            p.start()
-            agents.append(p)
-
-        # 3) Central agent: gather experiences, do updates
-        self.central_agent(
-            net_params_queues, exp_queues, iters, train_envs,
-            val_envs=None, test_envs=None, use_replay_buffer=use_replay_buffer
-        )
-
-        # 4) Wait for all agent processes to finish
-        for p in agents:
-            p.join()
 
     def calculate_from_selection(self, selected ,last_bit_rate):
         # selected_action is 0-5
