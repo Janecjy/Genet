@@ -2,6 +2,7 @@ import os
 import csv
 import time
 import math
+import math
 import numpy as np
 import torch
 import torch.multiprocessing as mp
@@ -16,14 +17,19 @@ import random
 import subprocess
 import sys
 from collections import defaultdict
+from collections import defaultdict
 sys.path.append('/users/janechen/Genet/src')    
 sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve")
+sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy")
+print("Pensieve sys path: ", sys.path)
 sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy")
 print("Pensieve sys path: ", sys.path)
 from emulator.abr.pensieve import a3c
 from emulator.abr.pensieve.utils import linear_reward
 from models import *
 # from .models import create_mask
+
+MODEL_SAVE_INTERVAL = 500
 
 MODEL_SAVE_INTERVAL = 500
 VIDEO_BIT_RATE = [300, 750, 1200, 1850, 2850, 4300]  # Kbps
@@ -35,6 +41,16 @@ REBUF_PENALTY = 43  # 1 sec rebuffering -> 3 Mbps
 SMOOTH_PENALTY = 1
 DEFAULT_QUALITY = 0  # default video quality without agent
 BITRATE_DIM = 6
+DEVICE = 'cpu'
+EMBEDDING_SIZE = 64
+
+BUCKET_BOUNDARIES = {
+    1: [0.12, 0.2, 0.28, 0.43, 0.55, 0.83, 1.03, 1.29, 1.63, 2.12, 3.64, 4.02, 5.74, 8, 12, 14],
+    2: [0.01, 0.3, 0.38, 0.44, 0.49, 0.54, 0.6, 0.68, 0.84, 1.41, 3, 5, 205, 395, 1206],
+    3: [0.01, 0.08, 0.11, 0.15, 0.23, 0.45, 0.8, 0.9, 1, 1.75],
+    4: [0.0002, 0.0047, 0.0361, 0.1, 0.2, 0.3],
+    5: [0.75, 1, 1.001, 1.003, 1.012, 1.25, 3.52, 4.7, 5.39, 6.26]
+}
 DEVICE = 'cpu'
 EMBEDDING_SIZE = 64
 
@@ -88,6 +104,42 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
         logger.addHandler(file_handler)
 
     return logger
+
+AGGREGATION_WINDOW_MS = 80 
+WINDOW = 10
+
+class TCPStatsAggregator:
+    def __init__(self):
+        self.window_data = defaultdict(list)
+        self.window_start_time = None
+        
+    def aggregate_window_data(self):
+        # if not self.window_data:
+        #     return None
+            
+        stats = {}
+        
+        print(len(self.window_data['srtt_us']))
+        rtts = [float(x) / 100000.0 / 8  for x in self.window_data['srtt_us']]
+        stats['rtt_ms'] = np.mean(rtts) if rtts else 0
+        
+        rttvars = [float(x) / 1000.0 for x in self.window_data['rttvar']]
+        stats['rttvar_ms'] = np.mean(rttvars) if rttvars else 0
+
+        cwnd_rate = [float(x) for x in self.window_data['cwnd_rate']]
+        stats['cwnd_rate'] = np.mean(cwnd_rate) if cwnd_rate else 0
+
+        l_w_mbps = [float(x) * 8.0 for x in self.window_data['l_w_mbps']]
+        stats['l_w_mbps'] = np.mean(l_w_mbps) if cwnd_rate else 0
+
+        delivery_rate = [float(x) / 125000.0 / 100 for x in self.window_data['delivery_rate']]
+        stats['delivery_rate'] = np.mean(delivery_rate) if cwnd_rate else 0
+        
+        stats['window_start'] = self.window_start_time
+        stats['num_packets'] = len(rtts)
+        
+        return stats
+
 
 AGGREGATION_WINDOW_MS = 80 
 WINDOW = 10
@@ -244,10 +296,12 @@ class Pensieve():
 
             actor = a3c.ActorNetwork(sess,
                                      state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
+                                     state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
                                      action_dim=A_DIM,
                                      bitrate_dim=BITRATE_DIM)
                                      # learning_rate=args.ACTOR_LR_RATE)
             critic = a3c.CriticNetwork(sess,
+                                       state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
                                        state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
                                        learning_rate=CRITIC_LR_RATE,
                                        bitrate_dim=BITRATE_DIM)
@@ -833,8 +887,6 @@ def add_embedding(state, tokens, embeddings):
             updated_state = np.concatenate((state.squeeze(0), embeddings), axis=0)  # [6 + 64, 6] = [70, 6]
         elif state.shape[0] == S_INFO:
             updated_state = np.concatenate((state, embeddings), axis=0)
-        else:
-            updated_state = state
         return updated_state, embeddings
     
     # Convert tokens to NumPy array if not already
@@ -904,7 +956,13 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         critic = a3c.CriticNetwork(sess, state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
                                   learning_rate=CRITIC_LR_RATE,
                                   bitrate_dim=BITRATE_DIM)
+        actor = a3c.ActorNetwork(sess, state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
+                                 action_dim=A_DIM, bitrate_dim=BITRATE_DIM)
+        critic = a3c.CriticNetwork(sess, state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
+                                  learning_rate=CRITIC_LR_RATE,
+                                  bitrate_dim=BITRATE_DIM)
 
+        # Initial synchronization of network parameters from the coordinator
         # Initial synchronization of network parameters from the coordinator
         actor_net_params, critic_net_params = net_params_queue.get()
         actor.set_network_params(actor_net_params)
@@ -917,9 +975,12 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         action_vec[selection] = 1
 
         s_batch = [np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN))]
+        s_batch = [np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN))]
         a_batch = [action_vec]
         r_batch = []
         entropy_record = []
+        tokens = np.array([])
+        embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
         tokens = np.array([])
         embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
 
@@ -947,11 +1008,13 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         mm_proc = subprocess.Popen(mm_cmd, shell=True, cwd=mahimahi_dir)
 
         # 4) Main Loop
+        # 4) Main Loop
         while True:
             browser_active = redis_client.get(f"{agent_id}_browser_active")
             # print("browser_active", browser_active)
             agent_logger.info(f"Browser active: {browser_active}")
             if browser_active and int(browser_active) == 1:
+                # Set action and flag in Redis
                 # Set action and flag in Redis
                 redis_pipe = redis_client.pipeline(transaction=True)
                 redis_pipe.set(f"{agent_id}_action", str(bit_rate))
@@ -988,8 +1051,22 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         recv_state = True
 
                 # If state received, process it
+                # If state received, process it
                 if recv_state:
                     state = np.array(state)
+                    print(f"State shape before embedding: {state.shape}")
+                    
+                    # Compute tokens and embed
+                    if tokens.shape[0] > WINDOW:
+                        tokens = np.concatenate((tokens, compute_token()), axis=0)
+                        # only keep the last WINDOW size of tokens
+                        tokens = tokens[-WINDOW:]
+                    else:
+                        tokens = compute_token()
+                    print(f"Tokens: {tokens}")
+                    state, embeddings = add_embedding(state, tokens, embeddings)
+                    print(f"State shape after embedding: {state.shape}")
+                    
                     print(f"State shape before embedding: {state.shape}")
                     
                     # Compute tokens and embed
@@ -1054,39 +1131,55 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     del a_batch[:]
                     del r_batch[:]
                     del entropy_record[:]
+                    # Reset batches
+                    del s_batch[:]
+                    del a_batch[:]
+                    del r_batch[:]
+                    del entropy_record[:]
 
-                # Store the state and action into batches
-                agent_logger.info(f"[Agent {agent_id}] end_of_video check 2: {end_of_video}")
-                if end_of_video and int(end_of_video) == 1:
-                    last_bit_rate = DEFAULT_QUALITY
-                    bit_rate = DEFAULT_QUALITY  # Use the default action here
-                    action_vec = np.zeros(A_DIM)
-                    selection = 0
-                    action_vec[selection] = 1
-                    s_batch.append(np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN)))  # Adjusted for embedding
-                    a_batch.append(action_vec)
-                    tokens = np.array([])
-                    embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
-                    epoch += 1
+                        # so that in the log we know where video ends
 
-                    # Reset virtual browser
-                    agent_logger.info(f"[Agent {agent_id}] Resetting virtual browser.")
-                    print(f"[Agent {agent_id}] Resetting virtual browser.")
-                    # redis_client.flushdb() # Wrong, should only reset the agent's state
-                    # only flush the agent's state
-                    for key in redis_client.scan_iter(f"{agent_id}_*"):
-                        redis_client.delete(key)
-                    agent_logger.info(redis_client.keys(f"{agent_id}_*"))
-                    redis_client.set(f"{agent_id}_browser_active", 0)
-                    redis_client.set(f"{agent_id}_new_epoch", 1)
-                else:
-                    s_batch.append(state)
-                    action_vec = np.zeros(A_DIM)
-                    action_vec[selection] = 1
-                    a_batch.append(action_vec)
+                    # store the state and action into batches
+                    agent_logger.info(f"[Agent {agent_id}] end_of_video check 2: {end_of_video}")
+                    if end_of_video and int(end_of_video) == 1:
+                        last_bit_rate = DEFAULT_QUALITY
+                        bit_rate = DEFAULT_QUALITY  # use the default action here
+                        #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
+                        action_vec = np.zeros(A_DIM)
+                        selection = 0
+                        action_vec[selection] = 1
+                        s_batch.append(np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN)))  # Adjusted for embedding
+                        a_batch.append(action_vec)
+                        tokens = np.array([])
+                        embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
+                        epoch += 1
+                        # reset virtual browser
+                        agent_logger.info(f"[Agent {agent_id}] Resetting virtual browser.")
+                        print(f"[Agent {agent_id}] Resetting virtual browser.")
+                        # redis_client.flushdb() # Wrong, should only reset the agent's state
+                        # only flush the agent's state
+                        for key in redis_client.scan_iter(f"{agent_id}_*"):
+                            redis_client.delete(key)
+                        agent_logger.info(redis_client.keys(f"{agent_id}_*"))
+                        redis_client.set(f"{agent_id}_browser_active", 0)
+                        redis_client.set(f"{agent_id}_new_epoch", 1)
+
+                    else:
+                        # print("Before append: ", s_batch)
+                        s_batch.append(state)
+                        # print("After append: ", s_batch)
+
+                        #print(bit_rate)
+                        #action_vec = np.zeros(args.A_DIM)
+                        #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
+                        action_vec = np.zeros(A_DIM)
+                        action_vec[selection] = 1
+                        #print(action_vec)
+                        a_batch.append(action_vec)
             else:
                 time.sleep(10)
 
+        # Wait for the environment to finish
         # Wait for the environment to finish
         mm_proc.wait()
         # No token_proc in single-process approach
