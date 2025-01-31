@@ -337,6 +337,7 @@ class Pensieve():
             #          np.max(val_rewards)])
             # val_epochs.append(epoch)
             # val_mean_rewards.append(val_mean_reward)
+<<<<<<< HEAD
             # bit_rate = DEFAULT_QUALITY
             # s_batch = [np.zeros((S_INFO, S_LEN))]
             # action_vec = np.zeros(A_DIM)
@@ -344,6 +345,15 @@ class Pensieve():
             # a_batch = [action_vec]
             # r_batch = []
             while epoch < iters:
+=======
+            bit_rate = DEFAULT_QUALITY
+            s_batch = [np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN))]
+            action_vec = np.zeros(A_DIM)
+            action_vec[bit_rate] = 1
+            a_batch = [action_vec]
+            r_batch = []
+            while epoch < 75000:
+>>>>>>> a9e8d4e (Add transformer embedding)
                 start_t = time.time()
                 # synchronize the network parameters of work agent
                 actor_net_params = actor.get_network_params()
@@ -940,6 +950,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
     starts a Mahimahi shell, runs the virtual_browser, collects data, etc.
     Then sends experiences to the central agent.
     """
+<<<<<<< HEAD
     agent_logger = setup_logger(
         f"agent_{agent_id}",
         f"/mydata/logs/{agent_id}_agent.log"
@@ -948,6 +959,11 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
     # 1) Create redis for state/action communication
     redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
+=======
+
+    # 1) Create Redis client for state/action communication
+    redis_client = redis.Redis(host="130.127.133.218", port=6379, decode_responses=True)
+>>>>>>> a9e8d4e (Add transformer embedding)
     redis_client.set(f"{agent_id}_action_flag", int(False))
 
     with tf.compat.v1.Session() as sess:
@@ -984,11 +1000,15 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         tokens = np.array([])
         embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
 
+<<<<<<< HEAD
         time_stamp = 0
+=======
+>>>>>>> a9e8d4e (Add transformer embedding)
         epoch = 0
         state = None
         reward = None
 
+<<<<<<< HEAD
         # 2) Get its training environment with a random delay and a random synthetic trace
         np.random.seed(agent_id)
         delay_val = random.choice(train_envs["delay_list"])
@@ -997,6 +1017,12 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         mahimahi_trace_path = summary_dir+"/trace_"+str(agent_id)
         abr_trace.convert_to_mahimahi_format(mahimahi_trace_path)
         print(f"Agent {agent_id} using trace {mahimahi_trace_path}")
+=======
+        # 2) Each agent randomly picks from train_envs
+        env_config = random.choice(train_envs)
+        delay_val = env_config["delay"]
+        trace_path = env_config["trace_file"]
+>>>>>>> a9e8d4e (Add transformer embedding)
 
         # 3) Launch Mahimahi + virtual browser
         mahimahi_dir = "src/emulator/abr"
@@ -1010,9 +1036,14 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         # 4) Main Loop
         # 4) Main Loop
         while True:
+<<<<<<< HEAD
             browser_active = redis_client.get(f"{agent_id}_browser_active")
             # print("browser_active", browser_active)
             agent_logger.info(f"Browser active: {browser_active}")
+=======
+            browser_active = redis_client.get("browser_active")
+            print("browser_active:", browser_active)
+>>>>>>> a9e8d4e (Add transformer embedding)
             if browser_active and int(browser_active) == 1:
                 # Set action and flag in Redis
                 # Set action and flag in Redis
@@ -1022,9 +1053,15 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                 try:
                     redis_pipe.execute()
                 except Exception as e:
+<<<<<<< HEAD
                     print(f"Exception {e}")
                     agent_logger.info(f"redis_pipe Exception {e}")
                 # read from redis
+=======
+                    print(f"Exception during Redis pipeline execution: {e}")
+                
+                # Read state and reward from Redis
+>>>>>>> a9e8d4e (Add transformer embedding)
                 recv_state = False
                 while not recv_state:
                     redis_pipe = redis_client.pipeline(transaction=True)
@@ -1034,6 +1071,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     try:
                         retval = redis_pipe.execute()
                     except Exception as e:
+<<<<<<< HEAD
                         print(f"Exception {e}")
                         agent_logger.info(f"redis_pipe Exception {e}")
                     #print(f"Retval {retval}")
@@ -1045,6 +1083,15 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                             reward = float(retval[1])
                             # print(f"[Agent {agent_id}] Received state: {state}.")
                             recv_state = True
+=======
+                        print(f"Exception during Redis pipeline execution: {e}")
+                    
+                    state_json, reward_val, state_flag = retval[:3]
+                    if state_flag is not None and int(state_flag):
+                        state = json.loads(state_json)
+                        reward = float(reward_val)
+                        recv_state = True
+>>>>>>> a9e8d4e (Add transformer embedding)
                     end_of_video = redis_client.get(f"{agent_id}_stop_flag")
                     if end_of_video and int(end_of_video) == 1:
                         agent_logger.info(f"[Agent {agent_id}] end_of_video received: {end_of_video}")
@@ -1164,11 +1211,34 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         redis_client.set(f"{agent_id}_browser_active", 0)
                         redis_client.set(f"{agent_id}_new_epoch", 1)
 
+=======
+>>>>>>> a9e8d4e (Add transformer embedding)
                     else:
-                        # print("Before append: ", s_batch)
-                        s_batch.append(state)
-                        # print("After append: ", s_batch)
+                        tokens = compute_token()
+                    print(f"Tokens: {tokens}")
+                    state, embeddings = add_embedding(state, tokens, embeddings)
+                    print(f"State shape after embedding: {state.shape}")
+                    
+                    r_batch.append(reward)
+                
+                # Compute reward (if not already handled)
+                # reward = compute_reward(msg, bit_rate, last_bit_rate)
+                
+                # 6d) Decide on an action based on current policy and send back
+                action_prob = actor.predict(np.reshape(state, (1, S_INFO+EMBEDDING_SIZE, S_LEN)))  # Adjusted for embedding size
+                if np.isnan(action_prob[0, 0]) and agent_id == 0:
+                    print(epoch)
+                    print(state, "state")
+                    print(action_prob, "action prob")
+                    import pdb
+                    pdb.set_trace()
+                action_cumsum = np.cumsum(action_prob)
+                bit_rate = (
+                    action_cumsum
+                    > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)
+                ).argmax()
 
+<<<<<<< HEAD
                         #print(bit_rate)
                         #action_vec = np.zeros(args.A_DIM)
                         #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
@@ -1176,6 +1246,55 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         action_vec[selection] = 1
                         #print(action_vec)
                         a_batch.append(action_vec)
+=======
+                entropy_record.append(a3c.compute_entropy(action_prob[0]))
+
+                # Check if it's time to send experiences to the central agent
+                end_of_video = redis_client.get(f"{agent_id}_stop_flag")
+                if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
+                    exp_queue.put([
+                        s_batch[1:],  # ignore the first chunk
+                        a_batch[1:],  # since we don't have control over it
+                        r_batch[1:],  # control over it
+                        end_of_video,
+                        {'entropy': entropy_record}
+                    ])
+                    print(f"[Agent {agent_id}] Sent experience to central agent.")
+
+                    # Synchronize network parameters from the coordinator
+                    actor_net_params, critic_net_params = net_params_queue.get()
+                    actor.set_network_params(actor_net_params)
+                    critic.set_network_params(critic_net_params)
+
+                    # Reset batches
+                    del s_batch[:]
+                    del a_batch[:]
+                    del r_batch[:]
+                    del entropy_record[:]
+
+                # Store the state and action into batches
+                if end_of_video and int(end_of_video) == 1:
+                    last_bit_rate = DEFAULT_QUALITY
+                    bit_rate = DEFAULT_QUALITY  # Use the default action here
+                    action_vec = np.zeros(A_DIM)
+                    action_vec[bit_rate] = 1
+                    s_batch.append(np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN)))  # Adjusted for embedding
+                    a_batch.append(action_vec)
+                    tokens = np.array([])
+                    embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
+                    epoch += 1
+
+                    # Reset virtual browser
+                    print(f"[Agent {agent_id}] Resetting virtual browser.")
+                    redis_client.flushdb()
+                    redis_client.set("browser_active", 0)
+                    redis_client.set("new_epoch", 1)
+                else:
+                    s_batch.append(state)
+                    action_vec = np.zeros(A_DIM)
+                    action_vec[bit_rate] = 1
+                    a_batch.append(action_vec)
+>>>>>>> a9e8d4e (Add transformer embedding)
             else:
                 time.sleep(10)
 
@@ -1199,3 +1318,5 @@ def calculate_from_selection(selected, last_bit_rate):
     bit_rate = min(5, bit_rate)
 
     return bit_rate
+=======
+>>>>>>> a9e8d4e (Add transformer embedding)

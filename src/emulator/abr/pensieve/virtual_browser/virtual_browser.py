@@ -12,7 +12,14 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import redis
+<<<<<<< HEAD
 redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
+=======
+redis_client = redis.Redis(host="130.127.133.218", port=6379, decode_responses=True)
+# print("Ping")
+redis_client.ping()
+print("Redis ping successful")
+>>>>>>> a9e8d4e (Add transformer embedding)
 
 from pensieve.virtual_browser.abr_server import run_abr_server
 
