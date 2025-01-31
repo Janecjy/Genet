@@ -1,6 +1,7 @@
 import os
 import csv
 import time
+import math
 import numpy as np
 import torch
 import torch.multiprocessing as mp
@@ -14,12 +15,15 @@ import json
 import random
 import subprocess
 import sys
+from collections import defaultdict
 sys.path.append('/users/janechen/Genet/src')    
 sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve")
-print(sys.path)
+sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy")
+print("Pensieve sys path: ", sys.path)
 from emulator.abr.pensieve import a3c
 from emulator.abr.pensieve.utils import linear_reward
-
+from models import *
+# from .models import create_mask
 
 MODEL_SAVE_INTERVAL = 500
 VIDEO_BIT_RATE = [300, 750, 1200, 1850, 2850, 4300]  # Kbps
@@ -31,6 +35,16 @@ REBUF_PENALTY = 43  # 1 sec rebuffering -> 3 Mbps
 SMOOTH_PENALTY = 1
 DEFAULT_QUALITY = 0  # default video quality without agent
 BITRATE_DIM = 6
+DEVICE = 'cpu'
+EMBEDDING_SIZE = 64
+
+BUCKET_BOUNDARIES = {
+    1: [0.12, 0.2, 0.28, 0.43, 0.55, 0.83, 1.03, 1.29, 1.63, 2.12, 3.64, 4.02, 5.74, 8, 12, 14],
+    2: [0.01, 0.3, 0.38, 0.44, 0.49, 0.54, 0.6, 0.68, 0.84, 1.41, 3, 5, 205, 395, 1206],
+    3: [0.01, 0.08, 0.11, 0.15, 0.23, 0.45, 0.8, 0.9, 1, 1.75],
+    4: [0.0002, 0.0047, 0.0361, 0.1, 0.2, 0.3],
+    5: [0.75, 1, 1.001, 1.003, 1.012, 1.25, 3.52, 4.7, 5.39, 6.26]
+}
 
 # bit_rate, buffer_size, next_chunk_size, bandwidth_measurement(throughput and
 # time), chunk_til_video_end
@@ -57,6 +71,42 @@ TRAIN_SEQ_LEN = 100  # batchsize of pensieve training 100
 UP_LINK_SPEED_FILE="pensieve/data/12mbps"
 VIDEO_SIZE_DIR="pensieve/data/video_sizes"
 # logger.set_logger('./log')
+
+AGGREGATION_WINDOW_MS = 80 
+WINDOW = 10
+
+class TCPStatsAggregator:
+    def __init__(self):
+        self.window_data = defaultdict(list)
+        self.window_start_time = None
+        
+    def aggregate_window_data(self):
+        # if not self.window_data:
+        #     return None
+            
+        stats = {}
+        
+        print(len(self.window_data['srtt_us']))
+        rtts = [float(x) / 100000.0 / 8  for x in self.window_data['srtt_us']]
+        stats['rtt_ms'] = np.mean(rtts) if rtts else 0
+        
+        rttvars = [float(x) / 1000.0 for x in self.window_data['rttvar']]
+        stats['rttvar_ms'] = np.mean(rttvars) if rttvars else 0
+
+        cwnd_rate = [float(x) for x in self.window_data['cwnd_rate']]
+        stats['cwnd_rate'] = np.mean(cwnd_rate) if cwnd_rate else 0
+
+        l_w_mbps = [float(x) * 8.0 for x in self.window_data['l_w_mbps']]
+        stats['l_w_mbps'] = np.mean(l_w_mbps) if cwnd_rate else 0
+
+        delivery_rate = [float(x) / 125000.0 / 100 for x in self.window_data['delivery_rate']]
+        stats['delivery_rate'] = np.mean(delivery_rate) if cwnd_rate else 0
+        
+        stats['window_start'] = self.window_start_time
+        stats['num_packets'] = len(rtts)
+        
+        return stats
+
 
 class Pensieve():
     """Pensieve Implementation.
@@ -163,12 +213,12 @@ class Pensieve():
                  'rewards_median', 'rewards_95per', 'rewards_max'])
 
             actor = a3c.ActorNetwork(sess,
-                                     state_dim=[S_INFO, S_LEN],
+                                     state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
                                      action_dim=A_DIM,
                                      bitrate_dim=BITRATE_DIM)
                                      # learning_rate=args.ACTOR_LR_RATE)
             critic = a3c.CriticNetwork(sess,
-                                       state_dim=[S_INFO, S_LEN],
+                                       state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
                                        learning_rate=CRITIC_LR_RATE,
                                        bitrate_dim=BITRATE_DIM)
 
@@ -204,7 +254,7 @@ class Pensieve():
             # val_epochs.append(epoch)
             # val_mean_rewards.append(val_mean_reward)
             bit_rate = DEFAULT_QUALITY
-            s_batch = [np.zeros((S_INFO, S_LEN))]
+            s_batch = [np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN))]
             action_vec = np.zeros(A_DIM)
             action_vec[bit_rate] = 1
             a_batch = [action_vec]
@@ -605,6 +655,195 @@ def compute_reward(msg, bit_rate, last_quality):
         - abs(video_quality - previous_quality)
     return reward
 
+def get_last_line(file_path):
+    """
+    Efficiently retrieves the last line from a file.
+    """
+    with open(file_path, 'rb') as f:
+        f.seek(-2, os.SEEK_END)  # Jump to the second last byte.
+        while f.read(1) != b'\n':
+            f.seek(-2, os.SEEK_CUR)
+            if f.tell() == 0:
+                f.seek(0)
+                break
+        last_line = f.readline().decode()
+    return last_line
+
+bprtrace_path = "/users/janechen/Genet/results/abr/genet_mpc/seed_10/pensieve_train/log/bpftrace_output.txt"
+def compute_token():
+    """
+    Spawns the TokenAggregator, which continuously reads bpftrace_output.txt
+    and puts tokens into `token_queue`.
+    """
+    aggregator = TCPStatsAggregator()
+    metrics_data = []
+    window_duration = 80
+    
+    try:
+        last_line = get_last_line(bprtrace_path)
+        last_time_ms = float(last_line.strip().split(',')[0]) / 1000000
+        print("last_time_ms: ", last_time_ms)
+    except Exception as e:
+        print(f"Error reading the last line: {e}")
+        return np.array(metrics_data)
+    first_time_ms = None
+    with open(bprtrace_path, "r") as f:
+        f.readline()
+        rtt_window_count = 10 
+        lost_packets = 0
+        pre_cwnd = 0
+        for line in f:
+            if line.startswith('A') or line.startswith('t'):
+                print(f"Skipping line with invalid data: {line}")
+                continue
+            parts = line.strip().split(',')
+            if len(parts) < 9:
+                # Ensure there are enough parts to prevent IndexError
+                print(f"Skipping line with insufficient data: {line}")
+                continue
+            try:
+                current_time_ns = float(parts[0])
+                current_time_ms = current_time_ns / 1000000
+                time_diff = last_time_ms - current_time_ms
+                if not first_time_ms:
+                    first_time_ms = current_time_ms
+                    print("first_time_ms: ", first_time_ms)
+            except ValueError:
+                # Skip lines with invalid numerical data
+                print(f"Skipping line with invalid numerical data: {line}")
+                continue
+            if time_diff < rtt_window_count * window_duration and current_time_ms <= last_time_ms:
+                if not aggregator.window_start_time:
+                    aggregator.window_start_time = current_time_ms
+                
+                # Determine if we've moved into a new window
+                if time_diff <= (rtt_window_count - 1) * window_duration:
+                    rtt_window_count -= 1
+                    print("time_diff: ", time_diff)
+                    print("rtt_window_count: ", rtt_window_count)
+                    print("window_duration: ", window_duration)
+                    # Aggregate data for the current window
+                    stats = aggregator.aggregate_window_data()
+                    if stats:
+                        metrics_data.append([
+                            0.7/1.5,
+                            stats['rtt_ms'],
+                            stats['rttvar_ms'],
+                            stats['delivery_rate'],
+                            stats['l_w_mbps'],
+                            stats['cwnd_rate']
+                        ])
+
+                        print(f"Window starts {stats['window_start']:.2f}ms "
+                            f"({stats['num_packets']} packets):\n"
+                            f"  Average RTT: {stats['rtt_ms']:.2f}ms\n"
+                            f"  RTT Variance: {stats['rttvar_ms']:.2f}ms\n"
+                            f"  Delivery Rate: {stats['delivery_rate']:.2f}\n"
+                            f"  L W mbps: {stats['l_w_mbps']:.2f}\n"
+                            f"  Cwnd rate: {stats['cwnd_rate']:.2f}\n")
+                    
+                    aggregator = TCPStatsAggregator()
+                    aggregator.window_start_time = current_time_ms
+                
+                lost_packets += float(parts[6])
+                
+                if current_time_ms - aggregator.window_start_time > WINDOW:
+                    aggregator.window_data['time_ms'].append(current_time_ms)
+                    aggregator.window_data['srtt_us'].append(parts[1])
+                    aggregator.window_data['rttvar'].append(parts[2])
+                    rate_interval = float(parts[4])
+                    if rate_interval == 0:
+                        rate_interval = 1
+                    aggregator.window_data['delivery_rate'].append(float(parts[3])*float(parts[5])*1000000 / rate_interval)
+                    aggregator.window_data['l_w_mbps'].append(lost_packets/window_duration)
+                    cwnd = float(parts[-3])
+                    if pre_cwnd>0:
+                        target_cwnd = cwnd/pre_cwnd
+                        cwnd_rate = round(math.log2(target_cwnd)*1000)/1000
+                    else:
+                        cwnd_rate = math.log2(0.0001)
+                    aggregator.window_data['cwnd_rate'].append(cwnd_rate)
+                    lost_packets = 0
+                    pre_cwnd = cwnd
+    
+    # Convert to numpy array and save
+    metrics_array = np.array(metrics_data)
+    # np.save('tcp_metrics_reno_trace_file_1.npy', metrics_array)
+    open(bprtrace_path, 'w').close()  # simple truncation
+    return metrics_array
+
+transformer = torch.load("/users/janechen/Genet/results/abr/genet_mpc/seed_10/pensieve_train/Checkpoint-Large_Combined_10RTT_6col_Transformer3_256_8_8_64_8_lr_1e-05-999iter.p", map_location='cpu')
+transformer.eval()
+def add_embedding(state, tokens, embeddings):
+    """
+    Appends the Transformer embedding of tokens to the state.
+    
+    Args:
+        state (np.ndarray): The current state array. Shape: [S_INFO, S_LEN]
+        tokens (list or np.ndarray): List of the latest 10 tokens, each with 6 features. Shape: [10, 6]
+        embeddings (np.ndarray): Current embeddings array. Shape: [EMBEDDING_SIZE, S_LEN]
+        transformer (nn.Module): The Transformer model.
+        create_mask_func (function): Function to create masks.
+        WINDOW (int): Required number of tokens to compute embedding.
+        S_LEN (int): Length of the embedding window.
+        DEVICE (str): Device to perform computations on.
+        
+    Returns:
+        np.ndarray: Updated state with the embedding appended. Shape: [S_INFO + EMBEDDING_SIZE, S_LEN]
+        np.ndarray: Updated embeddings array. Shape: [EMBEDDING_SIZE, S_LEN]
+    """
+    if len(tokens) < WINDOW:
+        # Not enough tokens to compute embedding
+        print("Not enough tokens to compute embedding. Using zero embeddings.")
+        # if state has 3 dimensions, squeeze
+        if len(state.shape) == 3 and state.shape[1] == S_INFO:
+            updated_state = np.concatenate((state.squeeze(0), embeddings), axis=0)  # [6 + 64, 6] = [70, 6]
+        elif state.shape[0] == S_INFO:
+            updated_state = np.concatenate((state, embeddings), axis=0)
+        return updated_state, embeddings
+    
+    # Convert tokens to NumPy array if not already
+    tokens_np = np.array(tokens)  # Shape: [10, 6]
+    tokens_tensor = torch.from_numpy(tokens_np).unsqueeze(0).float().to(DEVICE)  # Shape: [1, 10, 6]
+    print("tokens_tensor:", tokens_tensor.shape)
+    
+    with torch.no_grad():
+        enc_input = tokens_tensor[:, :, :].to(DEVICE)
+        dec_input = (1.5 * torch.ones((tokens_tensor.shape[0], 10, tokens_tensor.shape[2]))).to(DEVICE)
+        src_mask, tgt_mask, _, _ = create_mask(enc_input, dec_input, pad_idx=2, device=DEVICE)
+        
+        # Transformer forward pass
+        out_probs, encoder_out = transformer(
+            enc_input, dec_input, 
+            src_mask=src_mask, 
+            tgt_mask=tgt_mask,
+            src_padding_mask=None, 
+            tgt_padding_mask=None, 
+            memory_key_padding_mask=None
+        )
+        
+        # Compute the mean embedding across the sequence length
+        embedding_tensor = encoder_out.mean(dim=1)  # Shape: [1, EMBEDDING_SIZE]
+        print("embedding_tensor:", embedding_tensor.shape)
+        
+        # Move to CPU and convert to NumPy
+        embedding = embedding_tensor.squeeze(0).cpu().numpy().astype(np.float32)  # Shape: [64]
+        
+        # Shift embeddings to the left and insert the new embedding at the end
+        embeddings = np.roll(embeddings, -1, axis=1)  # Shift left along S_LEN axis
+        embeddings[:, -1] = embedding  # Insert new embedding
+        
+    # Concatenate embeddings to state
+    print("embedding shape: ", embeddings.shape)  # [64, 6]
+    print("state shape before embedding:", state.shape)  # [6, 6]
+    if len(state.shape) == 3:
+        updated_state = np.concatenate((state.squeeze(0), embeddings), axis=0)  # [6 + 64, 6] = [70, 6]
+    else:
+        updated_state = np.concatenate((state, embeddings), axis=0)
+    print("state shape after embedding:", updated_state.shape)  # [70, 6]
+    
+    return updated_state, embeddings
+
 
 def agent(agent_id, net_params_queue, exp_queue, train_envs,
           summary_dir, batch_size, randomization, randomization_interval,
@@ -615,78 +854,69 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
     Then sends experiences to the central agent.
     """
 
-
-    # 1) Create redis for state/action communication
-    redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
+    # 1) Create Redis client for state/action communication
+    redis_client = redis.Redis(host="130.127.133.218", port=6379, decode_responses=True)
     redis_client.set(f"{agent_id}_action_flag", int(False))
 
     with tf.compat.v1.Session() as sess:
-        # , open(os.path.join(
-        #     save_dir, f'log_agent_{agent_id}'), 'w') as log_file:
+        actor = a3c.ActorNetwork(sess, state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
+                                 action_dim=A_DIM, bitrate_dim=BITRATE_DIM)
+        critic = a3c.CriticNetwork(sess, state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
+                                  learning_rate=CRITIC_LR_RATE,
+                                  bitrate_dim=BITRATE_DIM)
 
-        # log_file.write('\t'.join(['time_stamp', 'bit_rate', 'buffer_size',
-        #                'rebuffer', 'video_chunk_size', 'delay', 'reward',
-        #                'epoch', 'trace_idx', 'mahimahi_ptr'])+'\n')
-        actor = a3c.ActorNetwork(sess, state_dim=[S_INFO, S_LEN],
-                                    action_dim=A_DIM, bitrate_dim=BITRATE_DIM)
-                                    # learning_rate=args.ACTOR_LR_RATE)
-        critic = a3c.CriticNetwork(sess, state_dim=[S_INFO, S_LEN],
-                                    learning_rate=CRITIC_LR_RATE,
-                                    bitrate_dim=BITRATE_DIM)
-
-        # initial synchronization of the network parameters from the coordinator
+        # Initial synchronization of network parameters from the coordinator
         actor_net_params, critic_net_params = net_params_queue.get()
         actor.set_network_params(actor_net_params)
         critic.set_network_params(critic_net_params)
 
         last_bit_rate = DEFAULT_QUALITY
-        selection = 0
         bit_rate = DEFAULT_QUALITY
 
         action_vec = np.zeros(A_DIM)
         action_vec[bit_rate] = 1
 
-        s_batch = [np.zeros((S_INFO, S_LEN))]
+        s_batch = [np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN))]
         a_batch = [action_vec]
         r_batch = []
         entropy_record = []
+        tokens = np.array([])
+        embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
 
-        # time_stamp = 0
         epoch = 0
         state = None
         reward = None
 
-        # 2) Example: each agent randomly picks from train_envs
+        # 2) Each agent randomly picks from train_envs
         env_config = random.choice(train_envs)
         delay_val = env_config["delay"]
         trace_path = env_config["trace_file"]
 
         # 3) Launch Mahimahi + virtual browser
-        #    - This spawns mm-delay + mm-link, then runs the virtual browser
         mahimahi_dir = "src/emulator/abr"
         mm_cmd = (
             f'mm-delay {delay_val} mm-loss uplink 0 mm-loss downlink 0 mm-link {UP_LINK_SPEED_FILE} {trace_path} -- bash -c \"python -m pensieve.virtual_browser.virtual_browser --ip \$MAHIMAHI_BASE --port 8000 --abr RLTrain --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/mpc_{agent_id}_{delay_val} --trace-file {trace_path} --abr-server-port=8322\"'
         )
-        # print (mm_cmd)
         print(f"[Agent {agent_id}] Starting environment:\n{mm_cmd}")
         mm_proc = subprocess.Popen(mm_cmd, shell=True, cwd=mahimahi_dir)
 
-        # 7) Wait for next net params or state update or exit
+        # 4) Main Loop
         while True:
             browser_active = redis_client.get("browser_active")
-            # print("browser_active", browser_active)
+            print("browser_active:", browser_active)
             if browser_active and int(browser_active) == 1:
+                # Set action and flag in Redis
                 redis_pipe = redis_client.pipeline(transaction=True)
                 redis_pipe.set(f"{agent_id}_action", str(bit_rate))
                 redis_pipe.set(f"{agent_id}_action_flag", int(True))
                 try:
                     redis_pipe.execute()
                 except Exception as e:
-                    print(f"Exception {e}")
-                # read from redis
+                    print(f"Exception during Redis pipeline execution: {e}")
+                
+                # Read state and reward from Redis
                 recv_state = False
                 while not recv_state:
-                    # print(f"[Agent {agent_id}] Waiting for next net params or state update or exit.")
                     redis_pipe = redis_client.pipeline(transaction=True)
                     redis_pipe.get(f"{agent_id}_state")
                     redis_pipe.get(f"{agent_id}_reward")
@@ -695,107 +925,104 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     try:
                         retval = redis_pipe.execute()
                     except Exception as e:
-                        print(f"Exception {e}")
-                    #print(f"Retval {retval}")
-                    if retval[2] is not None:
-                        if int(retval[2]):
-                            state = json.loads(retval[0])
-                            reward = float(retval[1])
-                            # print(f"[Agent {agent_id}] Received state: {state}.")
-                            recv_state = True
+                        print(f"Exception during Redis pipeline execution: {e}")
+                    
+                    state_json, reward_val, state_flag = retval[:3]
+                    if state_flag is not None and int(state_flag):
+                        state = json.loads(state_json)
+                        reward = float(reward_val)
+                        recv_state = True
                     end_of_video = redis_client.get(f"{agent_id}_stop_flag")
                     if end_of_video and int(end_of_video) == 1:
                         recv_state = True
 
-                # last_quality = msg["last_quality"]
-
-                # 6c) Build your "state" from msg
-                #     or keep a rolling agent_state if you do Pensieve style [S_INFO=6,S_LEN=8]
+                # If state received, process it
                 if recv_state:
                     state = np.array(state)
-                    r_batch.append(reward)
-                # time_stamp += delay  # in ms
-                # time_stamp += sleep_time  # in ms  
-
-                # -- linear reward --
-                # reward is video quality - rebuffer penalty - smoothness
-                # reward = linear_reward(VIDEO_BIT_RATE[bit_rate], 
-                #                     VIDEO_BIT_RATE[last_bit_rate], rebuf)
-
-                # 6d) Decide on an action (bit_rate) based on current policy and send bit_rate back
-                    action_prob = actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
-                    if np.isnan(action_prob[0, 0]) and agent_id == 0:
-                        print(epoch)
-                        print(state, "state")
-                        print(action_prob, "action prob")
-                        import pdb
-                        pdb.set_trace()
-                    action_cumsum = np.cumsum(action_prob)
-                    bit_rate = (
-                        action_cumsum
-                        > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)
-                    ).argmax()
-
-                    entropy_record.append(a3c.compute_entropy(action_prob[0]))
-
-                    # report experience to the coordinator
-                    # print(f"[Agent {agent_id}] check to send experience to central agent, r_batch size {len(r_batch)}, TRAIN_SEQ_LEN {TRAIN_SEQ_LEN}, end_of_video {end_of_video}.")
-                    # print(len(r_batch), TRAIN_SEQ_LEN, end_of_video)
-                    end_of_video = redis_client.get(f"{agent_id}_stop_flag")
-                    if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
-                        exp_queue.put([s_batch[1:],  # ignore the first chuck
-                                    a_batch[1:],  # since we don't have the
-                                    r_batch[1:],  # control over it
-                                    end_of_video,
-                                    {'entropy': entropy_record}])
-                        print(f"[Agent {agent_id}] sent experience to central agent.")
-                        # print("s_batch shape: ", s_batch.shape)
-                        # print("sent state shape: ", s_batch[1:].shape)
-
-                        # synchronize the network parameters from the coordinator
-                        actor_net_params, critic_net_params = net_params_queue.get()
-                        actor.set_network_params(actor_net_params)
-                        critic.set_network_params(critic_net_params)
-
-                        del s_batch[:]
-                        del a_batch[:]
-                        del r_batch[:]
-                        del entropy_record[:]
-
-                        # so that in the log we know where video ends
-
-                    # store the state and action into batches
-                    if end_of_video:
-                        last_bit_rate = DEFAULT_QUALITY
-                        bit_rate = DEFAULT_QUALITY  # use the default action here
-                        #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
-                        action_vec = np.zeros(A_DIM)
-                        action_vec[bit_rate] = 1
-                        s_batch.append(np.zeros((S_INFO, S_LEN)))
-                        a_batch.append(action_vec)
-                        epoch += 1
-                        # reset virtual browser
-                        print(f"[Agent {agent_id}] Resetting virtual browser.")
-                        redis_client.flushdb()
-                        redis_client.set("browser_active", 0)
-                        redis_client.set("new_epoch", 1)
-
+                    print(f"State shape before embedding: {state.shape}")
+                    
+                    # Compute tokens and embed
+                    if tokens.shape[0] > WINDOW:
+                        tokens = np.concatenate((tokens, compute_token()), axis=0)
+                        # only keep the last WINDOW size of tokens
+                        tokens = tokens[-WINDOW:]
                     else:
-                        # print("Before append: ", s_batch)
-                        s_batch.append(state)
-                        # print("After append: ", s_batch)
+                        tokens = compute_token()
+                    print(f"Tokens: {tokens}")
+                    state, embeddings = add_embedding(state, tokens, embeddings)
+                    print(f"State shape after embedding: {state.shape}")
+                    
+                    r_batch.append(reward)
+                
+                # Compute reward (if not already handled)
+                # reward = compute_reward(msg, bit_rate, last_bit_rate)
+                
+                # 6d) Decide on an action based on current policy and send back
+                action_prob = actor.predict(np.reshape(state, (1, S_INFO+EMBEDDING_SIZE, S_LEN)))  # Adjusted for embedding size
+                if np.isnan(action_prob[0, 0]) and agent_id == 0:
+                    print(epoch)
+                    print(state, "state")
+                    print(action_prob, "action prob")
+                    import pdb
+                    pdb.set_trace()
+                action_cumsum = np.cumsum(action_prob)
+                bit_rate = (
+                    action_cumsum
+                    > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)
+                ).argmax()
 
-                        #print(bit_rate)
-                        #action_vec = np.zeros(args.A_DIM)
-                        #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
-                        action_vec = np.zeros(A_DIM)
-                        action_vec[bit_rate] = 1
-                        #print(action_vec)
-                        a_batch.append(action_vec)
+                entropy_record.append(a3c.compute_entropy(action_prob[0]))
+
+                # Check if it's time to send experiences to the central agent
+                end_of_video = redis_client.get(f"{agent_id}_stop_flag")
+                if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
+                    exp_queue.put([
+                        s_batch[1:],  # ignore the first chunk
+                        a_batch[1:],  # since we don't have control over it
+                        r_batch[1:],  # control over it
+                        end_of_video,
+                        {'entropy': entropy_record}
+                    ])
+                    print(f"[Agent {agent_id}] Sent experience to central agent.")
+
+                    # Synchronize network parameters from the coordinator
+                    actor_net_params, critic_net_params = net_params_queue.get()
+                    actor.set_network_params(actor_net_params)
+                    critic.set_network_params(critic_net_params)
+
+                    # Reset batches
+                    del s_batch[:]
+                    del a_batch[:]
+                    del r_batch[:]
+                    del entropy_record[:]
+
+                # Store the state and action into batches
+                if end_of_video and int(end_of_video) == 1:
+                    last_bit_rate = DEFAULT_QUALITY
+                    bit_rate = DEFAULT_QUALITY  # Use the default action here
+                    action_vec = np.zeros(A_DIM)
+                    action_vec[bit_rate] = 1
+                    s_batch.append(np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN)))  # Adjusted for embedding
+                    a_batch.append(action_vec)
+                    tokens = np.array([])
+                    embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
+                    epoch += 1
+
+                    # Reset virtual browser
+                    print(f"[Agent {agent_id}] Resetting virtual browser.")
+                    redis_client.flushdb()
+                    redis_client.set("browser_active", 0)
+                    redis_client.set("new_epoch", 1)
+                else:
+                    s_batch.append(state)
+                    action_vec = np.zeros(A_DIM)
+                    action_vec[bit_rate] = 1
+                    a_batch.append(action_vec)
             else:
                 time.sleep(10)
 
-        # 4) Wait for the environment to finish
+        # Wait for the environment to finish
         mm_proc.wait()
+        # No token_proc in single-process approach
+        print(f"[Agent {agent_id}] Finished.")
 
-        print(f"[Agent {agent_id}] finished.")

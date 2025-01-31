@@ -11,7 +11,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import redis
-redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
+redis_client = redis.Redis(host="130.127.133.218", port=6379, decode_responses=True)
 # print("Ping")
 redis_client.ping()
 print("Redis ping successful")
@@ -139,13 +139,14 @@ def add_url_params(url, params):
 def timeout_handler(signum, frame):
     raise Exception("Timeout")
 
-def launch_bpftrace(trace_output_file):
-    """Launch bpftrace script and return the process."""
-    cmd = "sudo bpftrace check.bt > bpftrace_output.txt"
+# def launch_bpftrace(trace_output_file):
+#     """Launch bpftrace script and return the process."""
+#     cmd = "sudo bpftrace check.bt > bpftrace_output.txt"
+#     print("Launching bpftrace...")
     
-    # with open(trace_output_file, 'w') as f:
-    process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE)
-    check_interval = 10
+#     # with open(trace_output_file, 'w') as f:
+#     process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE)
+#     check_interval = 10
 
     # Start log rotation process
 #     rotation_cmd = f"watch -n {check_interval} python3 -c '\
@@ -165,8 +166,8 @@ def main():
     run_time = args.run_time
 
     # Start bpftrace before ABR server
-    trace_output = f"bpftrace_output.txt"
-    bpftrace_process = launch_bpftrace(trace_output)
+    # trace_output = f"bpftrace_output.txt"
+    # bpftrace_process = launch_bpftrace(trace_output)
 
     # start abr server here
     # prevent multiple process from being synchronized
@@ -290,6 +291,7 @@ def main():
         
         sleep(run_time)
         abr_server_proc.wait()
+        # bpftrace_process.wait()
 
         driver.quit()
         display.stop()
