@@ -848,6 +848,8 @@ def add_embedding(state, tokens, embeddings):
             updated_state = np.concatenate((state.squeeze(0), embeddings), axis=0)  # [6 + 64, 6] = [70, 6]
         elif state.shape[0] == S_INFO:
             updated_state = np.concatenate((state, embeddings), axis=0)
+        else:
+            updated_state = state
         return updated_state, embeddings
     
     # Convert tokens to NumPy array if not already
