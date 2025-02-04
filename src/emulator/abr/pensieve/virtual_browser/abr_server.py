@@ -162,23 +162,24 @@ def make_request_handler(server_states):
                     self.server_states['state'][0, 3, -1] = state3
                     self.server_states['state'][0, 4, :A_DIM] = state4
                     self.server_states['state'][0, 5, -1] = state5
-                    state_msg = self.server_states['state'].tolist()
-                    # print("Test sfas ")
-                    print(f"redis pipe get {self.redis_client.get('0_action_flag')}")
-                    # print (f"Server State {state_msg}")
-                    # print("Pipe Set")
-                    redis_pipe = self.redis_client.pipeline(transaction=True)
-                    # print("Pipe Unset")
-                    redis_pipe.set(f"{self.agent_id}_state", json.dumps(state_msg))
-                    redis_pipe.set(f"{self.agent_id}_reward", reward)
-                    redis_pipe.set(f"{self.agent_id}_state_flag", int(True))
-                    try:
-                        retval = redis_pipe.execute()
-                    except Exception as e:
-                        print(f"Exception err 1{e}")
 
                 except ZeroDivisionError:
                     pass
+                
+                state_msg = self.server_states['state'].tolist()
+                # print("Test sfas ")
+                print(f"redis pipe get {self.redis_client.get('0_action_flag')}")
+                # print (f"Server State {state_msg}")
+                # print("Pipe Set")
+                redis_pipe = self.redis_client.pipeline(transaction=True)
+                # print("Pipe Unset")
+                redis_pipe.set(f"{self.agent_id}_state", json.dumps(state_msg))
+                redis_pipe.set(f"{self.agent_id}_reward", reward)
+                redis_pipe.set(f"{self.agent_id}_state_flag", int(True))
+                try:
+                    retval = redis_pipe.execute()
+                except Exception as e:
+                    print(f"Exception err 1{e}")
 
                 self.log_writer.writerow(
                     [time.time(), VIDEO_BIT_RATE[post_data['lastquality']],
