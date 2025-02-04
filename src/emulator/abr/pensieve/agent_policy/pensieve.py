@@ -673,7 +673,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
         # 7) Wait for next net params or state update or exit
         while True:
-            browser_active = redis_client.get("browser_active")
+            browser_active = redis_client.get(f"{agent_id}_browser_active")
             # print("browser_active", browser_active)
             if browser_active and int(browser_active) == 1:
                 redis_pipe = redis_client.pipeline(transaction=True)
@@ -777,8 +777,8 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         # reset virtual browser
                         print(f"[Agent {agent_id}] Resetting virtual browser.")
                         redis_client.flushdb()
-                        redis_client.set("browser_active", 0)
-                        redis_client.set("new_epoch", 1)
+                        redis_client.set(f"{agent_id}_browser_active", 0)
+                        redis_client.set(f"{agent_id}_new_epoch", 1)
 
                     else:
                         # print("Before append: ", s_batch)

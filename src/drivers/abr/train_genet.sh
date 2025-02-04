@@ -55,12 +55,12 @@ elif [ "$MODE" = "emulation" ]; then
   echo "Running in emulation mode..."
   # Run your specific emulation command here:
   python src/emulator/abr/pensieve/agent_policy/train.py \
-      --total-epoch=100 \
+      --total-epoch=9000 \
       --seed=10 \
       --save-dir=results/abr/genet_mpc/seed_10/pensieve_train \
       --exp-name=pensieve_train \
       --model-path=results/abr/new_trace_gen/udr3/seed_10/model_saved/nn_model_ep_1000.ckpt \
-      --nagent=1 \
+      --nagent=16 \
       --video-size-file-dir=/users/janechen/Genet/data/abr/video_sizes \
       --val-freq=100 \
       --train-trace-dir=/users/janechen/Genet/data/abr/trace_set_1
