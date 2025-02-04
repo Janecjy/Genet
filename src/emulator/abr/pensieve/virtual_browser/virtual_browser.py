@@ -204,7 +204,7 @@ def main():
             args.abr_server_port
         )
     )
-    
+    agent_id = os.path.basename(args.summary_dir).split("_")[1]
     abr_server_proc.start()
     sleep(0.5)
 
@@ -226,7 +226,7 @@ def main():
     # ip = json.loads(urlopen("http://ip.jsontest.com/").read().decode('utf-8'))['ip']
     # url = 'http://{}/myindex_{}.html'.format(ip, abr_algo)
     print('Open', url)
-    redis_client.set("new_epoch", 0)
+    redis_client.set(f"{agent_id}_new_epoch", 0)
 
     # timeout signal
     signal.signal(signal.SIGALRM, timeout_handler)
@@ -269,19 +269,19 @@ def main():
         num_epochs = 75000
         driver.set_page_load_timeout(10)
         driver.get(url)
-        redis_client.set("browser_active", 1)
+        redis_client.set(f"{agent_id}_browser_active", 1)
         count = 1
         while count < num_epochs:
             sleep(10)
-            new_epoch = redis_client.get("new_epoch")
+            new_epoch = redis_client.get(f"{agent_id}_new_epoch")
             print("new_epoch: ", new_epoch)
             # print("new_epoch: ", type(new_epoch))
             if new_epoch and int(new_epoch) == 1:
                 count += 1
                 print("Get new url with count: ", count)
                 driver.get(url)
-                redis_client.set("new_epoch", 0)
-                redis_client.set("browser_active", 1)
+                redis_client.set(f"{agent_id}_new_epoch", 0)
+                redis_client.set(f"{agent_id}_browser_active", 1)
 
         if args.train:
             print("Video streaming started. Training in progress...")

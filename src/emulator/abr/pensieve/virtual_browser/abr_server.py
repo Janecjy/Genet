@@ -73,7 +73,7 @@ def make_request_handler(server_states):
             self.sess = server_states['sess']
             self.actor = server_states['actor']
             self.summary_dir = server_states['summary_dir']
-            self.agent_id = "0"#os.path.basename(self.summary_dir).split("_")[1]
+            self.agent_id = server_states['agent_id'] #"0"#os.path.basename(self.summary_dir).split("_")[1]
             print("Agent ID {}".format(self.agent_id))
             print("Redis keys {}".format(redis_client.keys()))
             self.redis_client = redis.Redis(host="130.127.133.218", port=6379, decode_responses=True)
@@ -168,7 +168,7 @@ def make_request_handler(server_states):
                 
                 state_msg = self.server_states['state'].tolist()
                 # print("Test sfas ")
-                print(f"redis pipe get {self.redis_client.get('0_action_flag')}")
+                print(f"redis pipe get {self.redis_client.get(f'{self.agent_id}_action_flag')}")
                 # print (f"Server State {state_msg}")
                 # print("Pipe Set")
                 redis_pipe = self.redis_client.pipeline(transaction=True)
@@ -275,6 +275,7 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
     os.makedirs(summary_dir, exist_ok=True)
     log_file_path = os.path.join(
         summary_dir, 'log_{}_{}'.format(abr, os.path.basename(trace_file)))
+    agent_id = os.path.basename(summary_dir).split("_")[1]
 
     with tf.Session() as sess ,open( log_file_path ,'wb' ) as log_file:
 
@@ -332,7 +333,7 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
             'state': np.zeros((1, S_INFO, S_LEN)),
             'future_bandwidth': 0,
             'summary_dir': summary_dir,
-
+            'agent_id': agent_id,
             # <-- Add these two if you're controlling chunk step externally
             # 'chunk_req_queue': chunk_req_queue,
             # 'chunk_resp_queue': chunk_resp_queue,

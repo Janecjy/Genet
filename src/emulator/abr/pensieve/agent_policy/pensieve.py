@@ -904,8 +904,8 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
         # 4) Main Loop
         while True:
-            browser_active = redis_client.get("browser_active")
-            print("browser_active:", browser_active)
+            browser_active = redis_client.get(f"{agent_id}_browser_active")
+            # print("browser_active", browser_active)
             if browser_active and int(browser_active) == 1:
                 # Set action and flag in Redis
                 redis_pipe = redis_client.pipeline(transaction=True)
@@ -1013,12 +1013,12 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     # Reset virtual browser
                     print(f"[Agent {agent_id}] Resetting virtual browser.")
                     redis_client.flushdb()
-                    redis_client.set("browser_active", 0)
-                    redis_client.set("new_epoch", 1)
+                    redis_client.set(f"{agent_id}_browser_active", 0)
+                    redis_client.set(f"{agent_id}_new_epoch", 1)
                 else:
                     s_batch.append(state)
                     action_vec = np.zeros(A_DIM)
-                    action_vec[bit_rate] = 1
+                    action_vec[selection] = 1
                     a_batch.append(action_vec)
             else:
                 time.sleep(10)
