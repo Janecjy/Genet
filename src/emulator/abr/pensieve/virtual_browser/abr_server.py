@@ -13,6 +13,7 @@ redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=Tr
 print("Ping Redis success")
 redis_client.ping()
 import numpy as np
+import logging
 
 from pensieve.agent_policy import Pensieve, RobustMPC, BufferBased, FastMPC, RLTrain
 from pensieve.a3c.a3c_jump import ActorNetwork
@@ -80,6 +81,8 @@ def make_request_handler(server_states):
             print("Redis end")
             print("Redis keys {}".format(redis_client.keys()))
             BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
+            logging.basicConfig(filename="/mydata/logs/"+str(self.agent_id)+"_request.log", level=logging.INFO)
+            self.logger = logging.getLogger()
 
         def do_POST(self):
             #self.redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
@@ -106,6 +109,24 @@ def make_request_handler(server_states):
                       post_data['nextChunkSize'],
                   ))
             # print(f"Post Data {post_data}")
+            logging.basicConfig(filename="/mydata/logs/"+str(self.agent_id)+"_request.log", level=logging.INFO)
+            self.logger = logging.getLogger()
+            self.logger.info("\tlastRequest: {}\n\tlastquality: {}\n\t"
+                  "lastChunkStartTime: {}\n\tlastChunkEndTime: {}\n\t"
+                  "lastChunkSize: {}\n\tRebufferTime: {}s\n\tbuffer: {}s\n\t"
+                  "bufferAdjusted: {}\n\tbandwidthEst: {}\n\t"
+                  "nextChunkSize: {}".format(
+                      post_data['lastRequest'],
+                      post_data['lastquality'],
+                      post_data['lastChunkStartTime'],
+                      post_data['lastChunkFinishTime'],
+                      post_data['lastChunkSize'],
+                      post_data['RebufferTime'] / M_IN_K,
+                      post_data['buffer'],
+                      post_data['bufferAdjusted'],
+                      post_data['bandwidthEst'],
+                      post_data['nextChunkSize'],
+                  ))
             if ('pastThroughput' in post_data):
                 print("Summary: ", post_data)
             else:
@@ -180,6 +201,7 @@ def make_request_handler(server_states):
                     retval = redis_pipe.execute()
                 except Exception as e:
                     print(f"Exception err 1{e}")
+                    self.logger.info(f"Exception err 1{e}")
 
                 self.log_writer.writerow(
                     [time.time(), VIDEO_BIT_RATE[post_data['lastquality']],
@@ -229,10 +251,12 @@ def make_request_handler(server_states):
                             retval = redis_pipe.execute()
                         except Exception as e:
                             print(f"Exception execute {e}")
+                            self.logger.info(f"Exception execute {e}")
                         if retval[1] and int(retval[1]):
                             bit_rate = int(retval[0])
                             action_recv = True
                             print(f"RLTrain received action {bit_rate}")
+                            self.logger.info(f"RLTrain received action {bit_rate}")
                 else:
                     raise TypeError("Unsupported ABR type.")
 
@@ -244,6 +268,7 @@ def make_request_handler(server_states):
                 if end_of_video:
                     # send_data = "REFRESH"
                     print("End of video")
+                    self.logger.info("End of video")
                     send_data = "stop"  # TODO: do not refresh the webpage and wait for timeout
                     self.server_states['last_total_rebuf'] = 0
                     self.server_states['last_bit_rate'] = DEFAULT_QUALITY
@@ -261,6 +286,7 @@ def make_request_handler(server_states):
 
         def do_GET(self):
             print('GOT REQ')
+            self.logger.info('GOT REQ')
             self.send_response(200)
             self.send_header('Cache-Control', 'max-age=3000')
             self.send_header('Content-Length', '20')
