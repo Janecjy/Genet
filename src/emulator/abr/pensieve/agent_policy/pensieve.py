@@ -70,7 +70,24 @@ TRAIN_SEQ_LEN = 100  # batchsize of pensieve training 100
 
 UP_LINK_SPEED_FILE="pensieve/data/12mbps"
 VIDEO_SIZE_DIR="pensieve/data/video_sizes"
-# logger.set_logger('./log')
+
+def setup_logger(logger_name, log_file, level=logging.INFO):
+    """Create and return a logger with a file handler."""
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(level)
+
+    # Avoid adding multiple handlers if logger already exists (happens in multiprocessing)
+    if not logger.handlers:
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        file_handler = logging.FileHandler(log_file, mode='w')
+        file_handler.setLevel(level)
+        formatter = logging.Formatter(
+            '%(asctime)s [%(name)s] %(levelname)s: %(message)s'
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+    return logger
 
 AGGREGATION_WINDOW_MS = 80 
 WINDOW = 10
@@ -149,12 +166,28 @@ class Pensieve():
         self.randomization_interval = randomization_interval
         self.video_size_file_dir = video_size_file_dir
         self.val_traces = val_traces
+        
+        # Prepare a logger for the training
+        self.train_logger = setup_logger(
+            "trainLogger",
+            "/mydata/logs/log_train"
+        )
+
+        # Prepare another logger for the "central_agent" function
+        # (if you prefer a single file for central agent logs or a separate file altogether)
+        self.central_logger = setup_logger(
+            "centralLogger",
+            "/mydata/logs/log_central"  # Or use os.path.join(log_dir, "log_central")
+        )
+
 
     def train(self, train_envs, save_dir, iters=1e5, use_replay_buffer=False):
         """
         train_envs: list of env configs, each is a dict like
             {"trace_file": "path/to/trace", "delay": 20}
         """
+        
+        self.train_logger.info("Starting Pensieve.train() with %d agents.", self.num_agents)
 
         # Visdom Settings
         # vis = visdom.Visdom()
@@ -165,9 +198,6 @@ class Pensieve():
         val_mean_rewards = []
         average_rewards = []
         average_entropies = []
-
-        logging.basicConfig(filename=os.path.join(save_dir, 'log_central'),
-                            filemode='w', level=logging.INFO)
 
         # inter-process communication queues
         net_params_queues = []
@@ -222,7 +252,7 @@ class Pensieve():
                                        learning_rate=CRITIC_LR_RATE,
                                        bitrate_dim=BITRATE_DIM)
 
-            logging.info('actor and critic initialized')
+            self.train_logger.info('actor and critic initialized')
             # summary_ops, summary_vars = a3c.build_summaries()
 
             sess.run(tf.global_variables_initializer())
@@ -286,6 +316,7 @@ class Pensieve():
                 for i in range(self.num_agents):
                     # print(f"Initial s_batch: {s_batch}")
                     s_batch, a_batch, r_batch, terminal, info = exp_queues[i].get()
+                    self.train_logger.info(f"Agent {i} got exp_queues with {len(s_batch)} samples")
                     print(f"After getting exp_queues: {s_batch}")
                     print("s_batch size: ", len(s_batch))
                     # print(f"s_batch shape: {np.squeeze(np.stack(s_batch, axis=0), axis=1).shape}")
@@ -330,7 +361,7 @@ class Pensieve():
                 avg_td_loss = total_td_loss / total_batch_len
                 avg_entropy = total_entropy / total_batch_len
 
-                logging.info('Epoch: ' + str(epoch) +
+                self.train_logger.info('Epoch: ' + str(epoch) +
                              ' TD_loss: ' + str(avg_td_loss) +
                              ' Avg_reward: ' + str(avg_reward) +
                              ' Avg_entropy: ' + str(avg_entropy))
@@ -406,7 +437,7 @@ class Pensieve():
                     save_path = saver.save(
                         sess,
                         os.path.join(save_dir, "model_saved", f"nn_model_ep_{epoch}.ckpt"))
-                    logging.info("Model saved in file: " + save_path)
+                    self.train_logger.info("Model saved in file: " + save_path)
 
                 end_t = time.time()
                 # print(f'epoch{epoch-1}: {end_t - start_t}s')
@@ -503,8 +534,10 @@ class Pensieve():
         """
         torch.set_num_threads(2)
 
-        logging.basicConfig(filename=os.path.join(self.log_dir, 'log_central'),
-                            filemode='w', level=logging.INFO)
+        self.central_logger.info(
+            "Central agent started with %d agents for %d iterations.",
+            self.num_agents, iters
+        )
 
         assert self.net.is_central
         log_header = ['epoch', 'rewards_min', 'rewards_5per', 'rewards_mean',
@@ -578,7 +611,7 @@ class Pensieve():
             avg_reward = total_reward / total_agents
             avg_entropy = total_entropy / total_batch_len
 
-            logging.info('Epoch: {} Avg_reward: {} Avg_entropy: {}'.format(
+            self.central_logger.info('Epoch: {} Avg_reward: {} Avg_entropy: {}'.format(
                 self.epoch, avg_reward, avg_entropy))
 
             if (self.epoch+1) % self.model_save_interval == 0:
@@ -855,9 +888,14 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
     starts a Mahimahi shell, runs the virtual_browser, collects data, etc.
     Then sends experiences to the central agent.
     """
+    agent_logger = setup_logger(
+        f"agent_{agent_id}",
+        f"/mydata/logs/{agent_id}_agent.log"
+    )
+    agent_logger.info("Agent %d started!", agent_id)
 
-    # 1) Create Redis client for state/action communication
-    redis_client = redis.Redis(host="130.127.133.218", port=6379, decode_responses=True)
+    # 1) Create redis for state/action communication
+    redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
     redis_client.set(f"{agent_id}_action_flag", int(False))
 
     with tf.compat.v1.Session() as sess:
@@ -900,12 +938,14 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
             f'mm-delay {delay_val} mm-loss uplink 0 mm-loss downlink 0 mm-link {UP_LINK_SPEED_FILE} {trace_path} -- bash -c \"python -m pensieve.virtual_browser.virtual_browser --ip \$MAHIMAHI_BASE --port 8000 --abr RLTrain --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/mpc_{agent_id}_{delay_val} --trace-file {trace_path} --abr-server-port=8322\"'
         )
         print(f"[Agent {agent_id}] Starting environment:\n{mm_cmd}")
+        agent_logger.info(f"[Agent {agent_id}] Starting environment:\n{mm_cmd}")
         mm_proc = subprocess.Popen(mm_cmd, shell=True, cwd=mahimahi_dir)
 
         # 4) Main Loop
         while True:
             browser_active = redis_client.get(f"{agent_id}_browser_active")
             # print("browser_active", browser_active)
+            agent_logger.info(f"Browser active: {browser_active}")
             if browser_active and int(browser_active) == 1:
                 # Set action and flag in Redis
                 redis_pipe = redis_client.pipeline(transaction=True)
@@ -914,9 +954,9 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                 try:
                     redis_pipe.execute()
                 except Exception as e:
-                    print(f"Exception during Redis pipeline execution: {e}")
-                
-                # Read state and reward from Redis
+                    print(f"Exception {e}")
+                    agent_logger.info(f"redis_pipe Exception {e}")
+                # read from redis
                 recv_state = False
                 while not recv_state:
                     redis_pipe = redis_client.pipeline(transaction=True)
@@ -927,13 +967,15 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     try:
                         retval = redis_pipe.execute()
                     except Exception as e:
-                        print(f"Exception during Redis pipeline execution: {e}")
-                    
-                    state_json, reward_val, state_flag = retval[:3]
-                    if state_flag is not None and int(state_flag):
-                        state = json.loads(state_json)
-                        reward = float(reward_val)
-                        recv_state = True
+                        print(f"Exception {e}")
+                        agent_logger.info(f"redis_pipe Exception {e}")
+                    #print(f"Retval {retval}")
+                    if retval[2] is not None:
+                        if int(retval[2]):
+                            state = json.loads(retval[0])
+                            reward = float(retval[1])
+                            # print(f"[Agent {agent_id}] Received state: {state}.")
+                            recv_state = True
                     end_of_video = redis_client.get(f"{agent_id}_stop_flag")
                     if end_of_video and int(end_of_video) == 1:
                         recv_state = True
@@ -955,42 +997,52 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     print(f"State shape after embedding: {state.shape}")
                     
                     r_batch.append(reward)
-                
-                # Compute reward (if not already handled)
-                # reward = compute_reward(msg, bit_rate, last_bit_rate)
-                
-                # 6d) Decide on an action based on current policy and send back
-                action_prob = actor.predict(np.reshape(state, (1, S_INFO+EMBEDDING_SIZE, S_LEN)))  # Adjusted for embedding size
-                if np.isnan(action_prob[0, 0]) and agent_id == 0:
-                    print(epoch)
-                    print(state, "state")
-                    print(action_prob, "action prob")
-                    import pdb
-                    pdb.set_trace()
-                action_cumsum = np.cumsum(action_prob)
-                bit_rate = (
-                    action_cumsum
-                    > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)
-                ).argmax()
+                # time_stamp += delay  # in ms
+                # time_stamp += sleep_time  # in ms  
+
+                # -- linear reward --
+                # reward is video quality - rebuffer penalty - smoothness
+                # reward = linear_reward(VIDEO_BIT_RATE[bit_rate], 
+                #                     VIDEO_BIT_RATE[last_bit_rate], rebuf)
+
+                # 6d) Decide on an action (bit_rate) based on current policy and send bit_rate back
+                    action_prob = actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
+                    if np.isnan(action_prob[0, 0]) and agent_id == 0:
+                        print(epoch)
+                        print(state, "state")
+                        print(action_prob, "action prob")
+                        agent_logger.info(f"Epoch {epoch}")
+                        # logger.info(f"State {state}")
+                        agent_logger.info(f"Action prob {action_prob}")
+                        import pdb
+                        pdb.set_trace()
+                    action_cumsum = np.cumsum(action_prob)
+                    bit_rate = (
+                        action_cumsum
+                        > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)
+                    ).argmax()
 
                 entropy_record.append(a3c.compute_entropy(action_prob[0]))
 
-                # Check if it's time to send experiences to the central agent
-                end_of_video = redis_client.get(f"{agent_id}_stop_flag")
-                if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
-                    exp_queue.put([
-                        s_batch[1:],  # ignore the first chunk
-                        a_batch[1:],  # since we don't have control over it
-                        r_batch[1:],  # control over it
-                        end_of_video,
-                        {'entropy': entropy_record}
-                    ])
-                    print(f"[Agent {agent_id}] Sent experience to central agent.")
+                    # report experience to the coordinator
+                    # print(f"[Agent {agent_id}] check to send experience to central agent, r_batch size {len(r_batch)}, TRAIN_SEQ_LEN {TRAIN_SEQ_LEN}, end_of_video {end_of_video}.")
+                    # print(len(r_batch), TRAIN_SEQ_LEN, end_of_video)
+                    end_of_video = redis_client.get(f"{agent_id}_stop_flag")
+                    if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
+                        exp_queue.put([s_batch[1:],  # ignore the first chuck
+                                    a_batch[1:],  # since we don't have the
+                                    r_batch[1:],  # control over it
+                                    end_of_video,
+                                    {'entropy': entropy_record}])
+                        agent_logger.info(f"[Agent {agent_id}] sent experience to central agent.")
+                        print(f"[Agent {agent_id}] sent experience to central agent.")
+                        # print("s_batch shape: ", s_batch.shape)
+                        # print("sent state shape: ", s_batch[1:].shape)
 
-                    # Synchronize network parameters from the coordinator
-                    actor_net_params, critic_net_params = net_params_queue.get()
-                    actor.set_network_params(actor_net_params)
-                    critic.set_network_params(critic_net_params)
+                        # synchronize the network parameters from the coordinator
+                        actor_net_params, critic_net_params = net_params_queue.get()
+                        actor.set_network_params(actor_net_params)
+                        critic.set_network_params(critic_net_params)
 
                     # Reset batches
                     del s_batch[:]
