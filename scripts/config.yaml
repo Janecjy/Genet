@@ -1,0 +1,7 @@
+servers:
+  - hostname: clnode075.clemson.cloudlab.us
+    branch: emulation-training
+    redis: true
+  - hostname: clnode065.clemson.cloudlab.us
+    branch: emulation-training
+    redis: false
