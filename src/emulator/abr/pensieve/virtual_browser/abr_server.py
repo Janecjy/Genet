@@ -9,7 +9,7 @@ import time
 import json
 import redis
 # print("Pong")
-redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
+redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
 print("Ping Redis success")
 redis_client.ping()
 import numpy as np
@@ -77,7 +77,7 @@ def make_request_handler(server_states):
             self.agent_id = server_states['agent_id'] #"0"#os.path.basename(self.summary_dir).split("_")[1]
             print("Agent ID {}".format(self.agent_id))
             print("Redis keys {}".format(redis_client.keys()))
-            self.redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
+            self.redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
             print("Redis end")
             print("Redis keys {}".format(redis_client.keys()))
             BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
@@ -85,7 +85,7 @@ def make_request_handler(server_states):
             self.logger = logging.getLogger()
 
         def do_POST(self):
-            #self.redis_client = redis.Redis(host="128.105.144.99", port=6379, decode_responses=True)
+            #self.redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
             #print("New keys")
             #print(self.redis_client.keys())
             content_length = int(self.headers['Content-Length'])
