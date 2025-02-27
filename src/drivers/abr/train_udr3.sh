@@ -48,6 +48,7 @@ if [ "$MODE" = "simulation" ]; then
   echo "Running in simulation mode..."
   for seed in 10 20 30; do
     python src/simulator/abr_simulator/pensieve/train.py  \
+        --jump-action \
         --save-dir ${save_dir}/${train_name}/seed_${seed} \
         --exp-name ${train_name} \
         --seed ${seed} \

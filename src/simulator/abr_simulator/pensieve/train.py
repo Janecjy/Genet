@@ -3,6 +3,9 @@ import os
 import time
 import warnings
 
+import sys
+sys.path.append("/users/janechen/Genet/src/")
+
 from simulator.abr_simulator.pensieve.pensieve import Pensieve
 from simulator.abr_simulator.schedulers import (
     UDRTrainScheduler,
