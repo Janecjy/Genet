@@ -33,6 +33,66 @@ class AbrTrace:
                 'buffer_thresh': self.buffer_thresh,
                 'name': self.name}
         write_json_file(filename, data)
+        
+    def convert_to_mahimahi_format(self, output_file: str):
+        """Convert the trace to the format of mahimahi and write to output file.
+        
+        Args:
+            output_file: str, path to the output file
+        
+        The mahimahi format represents packet delivery times, where each line
+        contains a timestamp (in milliseconds) when a packet can be delivered.
+        """
+        # Constants
+        BYTES_PER_PKT = 1500.0
+        MILLISEC_IN_SEC = 1000.0
+        BITS_IN_BYTE = 8.0
+        
+        with open(output_file, 'w') as mf:
+            # Start with time 0
+            millisec_time = 0
+            mf.write(str(millisec_time) + '\n')
+            
+            # Process each bandwidth segment
+            for i in range(len(self.bandwidths)):
+                # Get current bandwidth in Mbps
+                throughput = self.bandwidths[i]
+                
+                # Calculate duration of this segment in milliseconds
+                if i < len(self.timestamps) - 1:
+                    duration_sec = self.timestamps[i+1] - self.timestamps[i]
+                else:
+                    # For the last segment, assume it lasts for 1 second
+                    # This can be adjusted based on your needs
+                    duration_sec = 1.0
+                
+                duration_ms = duration_sec * MILLISEC_IN_SEC
+                
+                # Convert Mbps to packets per millisecond
+                # Mbps -> bytes per second -> packets per second -> packets per millisecond
+                mbps_to_bps = throughput * 1000000  # Mbps to bps
+                bps_to_Bps = mbps_to_bps / BITS_IN_BYTE  # bps to Bytes per second
+                Bps_to_pkts = bps_to_Bps / BYTES_PER_PKT  # Bytes per second to packets per second
+                pkt_per_millisec = Bps_to_pkts / MILLISEC_IN_SEC  # packets per second to packets per millisecond
+                
+                # Write packet timestamps for this segment
+                millisec_count = 0
+                pkt_count = 0
+                
+                while millisec_count < duration_ms:
+                    millisec_count += 1
+                    millisec_time += 1
+                    
+                    # Calculate how many packets should be sent by this millisecond
+                    to_send = (millisec_count * pkt_per_millisec) - pkt_count
+                    to_send = int(np.floor(to_send))
+                    
+                    # Write timestamps for each packet
+                    for j in range(to_send):
+                        mf.write(str(millisec_time) + '\n')
+                    
+                    pkt_count += to_send
+        
 
     @staticmethod
     def load_from_file(filename: str):

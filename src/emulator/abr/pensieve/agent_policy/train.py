@@ -11,6 +11,9 @@ sys.path.append('/users/janechen/Genet/src')
 sys.path.append('/users/janechen/Genet/src/emulator/abr')
 print(sys.path)
 from pensieve import Pensieve
+from simulator.abr_simulator.schedulers import (
+    UDRTrainScheduler,
+)
 # from pensieve import create_mask
 from common.utils import set_seed, save_args
 
@@ -161,6 +164,10 @@ def parse_args():
 
 def main():
     args = parse_args()
+    assert (
+        not args.model_path
+        or args.model_path.endswith(".ckpt")
+    )
     os.makedirs(args.save_dir, exist_ok=True)
     save_args(args, args.save_dir)
     set_seed(args.seed)
@@ -187,24 +194,14 @@ def main():
     ############################################################################
     # delay_list = [5, 10, 20, 40, 80]
     delay_list = [40]
-    trace_dir = args.train_trace_dir
-    # print("Trace dir: {}".format(trace_dir))
-    all_trace_files = []
-    if trace_dir and os.path.exists(trace_dir):
-        all_trace_files = [
-            f for f in os.listdir(trace_dir)
-            if os.path.isfile(os.path.join(trace_dir, f))
-        ]
-    train_envs = []
-    # print("All trace files: {}".format(all_trace_files))
-    for trace_file in all_trace_files:
-        trace_path = os.path.join(trace_dir, trace_file)
-        # print("Trace path: {}".format(trace_path))
-        for d in delay_list:
-            train_envs.append({"trace_file": trace_path, "delay": d})
-
-    print("Built train_envs with {} total configurations.".format(len(train_envs)))
-
+    config_file = args.config_file
+    training_traces = []
+    train_scheduler = UDRTrainScheduler(
+        config_file,
+        training_traces,
+        percent=args.real_trace_prob,
+    )
+    train_envs = {"delay_list": delay_list, "train_scheduler": train_scheduler}
     
     ############################################################################
     # 3) Initialize Pensieve agent with the training environments.
