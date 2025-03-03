@@ -1068,9 +1068,6 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         print(epoch)
                         print(state, "state")
                         print(action_prob, "action prob")
-                        agent_logger.info(f"Epoch {epoch}")
-                        # logger.info(f"State {state}")
-                        agent_logger.info(f"Action prob {action_prob}")
                         import pdb
                         pdb.set_trace()
                     action_cumsum = np.cumsum(action_prob)
