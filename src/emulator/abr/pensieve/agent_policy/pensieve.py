@@ -20,8 +20,6 @@ print(sys.path)
 from emulator.abr.pensieve import a3c
 from emulator.abr.pensieve.utils import linear_reward
 
-
-MODEL_SAVE_INTERVAL = 500
 VIDEO_BIT_RATE = [300, 750, 1200, 1850, 2850, 4300]  # Kbps
 # VIDEO_BIT_RATE = [300, 1200, 2850, 6500, 33000, 165000]
 HD_REWARD = [1, 2, 3, 12, 15, 20]
@@ -36,7 +34,7 @@ BITRATE_DIM = 6
 # time), chunk_til_video_end
 S_INFO = 6
 S_LEN = 6  # take how many frames in the past
-A_DIM = 6
+A_DIM = 3
 ACTOR_LR_RATE = 0.0001
 CRITIC_LR_RATE = 0.001
 BUFFER_NORM_FACTOR = 10.0
@@ -233,13 +231,13 @@ class Pensieve():
             #          np.max(val_rewards)])
             # val_epochs.append(epoch)
             # val_mean_rewards.append(val_mean_reward)
-            bit_rate = DEFAULT_QUALITY
-            s_batch = [np.zeros((S_INFO, S_LEN))]
-            action_vec = np.zeros(A_DIM)
-            action_vec[bit_rate] = 1
-            a_batch = [action_vec]
-            r_batch = []
-            while epoch < 75000:
+            # bit_rate = DEFAULT_QUALITY
+            # s_batch = [np.zeros((S_INFO, S_LEN))]
+            # action_vec = np.zeros(A_DIM)
+            # action_vec[bit_rate] = 1
+            # a_batch = [action_vec]
+            # r_batch = []
+            while epoch < iters:
                 start_t = time.time()
                 # synchronize the network parameters of work agent
                 actor_net_params = actor.get_network_params()
@@ -326,7 +324,7 @@ class Pensieve():
                 # writer.add_summary(summary_str, epoch)
                 # writer.flush()
 
-                if epoch % 10 == 0:
+                if epoch % self.model_save_interval == 0:
                     # # Visdom log and plot
 
                     # val_rewards = [self._test(
@@ -681,28 +679,32 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         bit_rate = DEFAULT_QUALITY
 
         action_vec = np.zeros(A_DIM)
-        action_vec[bit_rate] = 1
+        action_vec[selection] = 1
 
         s_batch = [np.zeros((S_INFO, S_LEN))]
         a_batch = [action_vec]
         r_batch = []
         entropy_record = []
 
-        # time_stamp = 0
+        time_stamp = 0
         epoch = 0
         state = None
         reward = None
 
-        # 2) Example: each agent randomly picks from train_envs
-        env_config = random.choice(train_envs)
-        delay_val = env_config["delay"]
-        trace_path = env_config["trace_file"]
+        # 2) Get its training environment with a random delay and a random synthetic trace
+        np.random.seed(agent_id)
+        delay_val = random.choice(train_envs["delay_list"])
+        scheduler = train_envs["train_scheduler"]
+        abr_trace = scheduler.get_trace()
+        mahimahi_trace_path = summary_dir+"/trace_"+str(agent_id)
+        abr_trace.convert_to_mahimahi_format(mahimahi_trace_path)
+        print(f"Agent {agent_id} using trace {mahimahi_trace_path}")
 
         # 3) Launch Mahimahi + virtual browser
         #    - This spawns mm-delay + mm-link, then runs the virtual browser
         mahimahi_dir = "src/emulator/abr"
         mm_cmd = (
-            f'mm-delay {delay_val} mm-loss uplink 0 mm-loss downlink 0 mm-link {UP_LINK_SPEED_FILE} {trace_path} -- bash -c \"python -m pensieve.virtual_browser.virtual_browser --ip \$MAHIMAHI_BASE --port 8000 --abr RLTrain --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/mpc_{agent_id}_{delay_val} --trace-file {trace_path} --abr-server-port=8322\"'
+            f'mm-delay {delay_val} mm-loss uplink 0 mm-loss downlink 0 mm-link {UP_LINK_SPEED_FILE} {mahimahi_trace_path} -- bash -c \"python -m pensieve.virtual_browser.virtual_browser --ip \$MAHIMAHI_BASE --port 8000 --abr RLTrain --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/pensieve_{agent_id}_{delay_val} --trace-file {mahimahi_trace_path} --abr-server-port=8322\"'
         )
         # print (mm_cmd)
         print(f"[Agent {agent_id}] Starting environment:\n{mm_cmd}")
@@ -764,22 +766,19 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                 #                     VIDEO_BIT_RATE[last_bit_rate], rebuf)
 
                 # 6d) Decide on an action (bit_rate) based on current policy and send bit_rate back
-                    action_prob = actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
+                    # compute action probability vector
+                    action_prob = actor.predict(np.reshape(
+                        state, (1, S_INFO, S_LEN)))
                     if np.isnan(action_prob[0, 0]) and agent_id == 0:
                         print(epoch)
                         print(state, "state")
                         print(action_prob, "action prob")
-                        agent_logger.info(f"Epoch {epoch}")
-                        # logger.info(f"State {state}")
-                        agent_logger.info(f"Action prob {action_prob}")
                         import pdb
                         pdb.set_trace()
                     action_cumsum = np.cumsum(action_prob)
-                    bit_rate = (
-                        action_cumsum
-                        > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)
-                    ).argmax()
-
+                    selection = (action_cumsum > np.random.randint(
+                        1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+                    bit_rate = calculate_from_selection(selection, last_bit_rate)
                     entropy_record.append(a3c.compute_entropy(action_prob[0]))
 
                     # report experience to the coordinator
@@ -817,7 +816,8 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         bit_rate = DEFAULT_QUALITY  # use the default action here
                         #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
                         action_vec = np.zeros(A_DIM)
-                        action_vec[bit_rate] = 1
+                        selection = 0
+                        action_vec[selection] = 1
                         s_batch.append(np.zeros((S_INFO, S_LEN)))
                         a_batch.append(action_vec)
                         epoch += 1
@@ -841,7 +841,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         #action_vec = np.zeros(args.A_DIM)
                         #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
                         action_vec = np.zeros(A_DIM)
-                        action_vec[bit_rate] = 1
+                        action_vec[selection] = 1
                         #print(action_vec)
                         a_batch.append(action_vec)
             else:
@@ -851,3 +851,18 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         mm_proc.wait()
 
         print(f"[Agent {agent_id}] finished.")
+
+def calculate_from_selection(selected, last_bit_rate):
+    # naive step implementation
+    # action=0, bitrate-1; action=1, bitrate stay; action=2, bitrate+1
+    if selected == 1:
+        bit_rate = last_bit_rate
+    elif selected == 2:
+        bit_rate = last_bit_rate + 1
+    else:
+        bit_rate = last_bit_rate - 1
+    # bound
+    bit_rate = max(0, bit_rate)
+    bit_rate = min(5, bit_rate)
+
+    return bit_rate
