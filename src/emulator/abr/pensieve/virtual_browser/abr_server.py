@@ -306,7 +306,7 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
     with tf.Session() as sess ,open( log_file_path ,'wb' ) as log_file:
 
         actor = ActorNetwork( sess ,
-                              state_dim=[6 ,6] ,action_dim=6 ,
+                              state_dim=[6 ,6] ,action_dim=3 ,
                               bitrate_dim=6)
 
         sess.run( tf.initialize_all_variables() )
