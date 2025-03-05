@@ -9,14 +9,15 @@ SIMULATOR_DIR="../sim"
 
 
 # new models
-NN_MODELS_UDR_3="../../results/abr/udr3/seed_10/model_saved/nn_model_ep_75000.ckpt"
+NN_MODELS_UDR_3="/mydata/results/abr/udr3_emu_par/seed_10/model_saved/nn_model_ep_1000.ckpt"
+# NN_MODELS_UDR_3="../../results/abr/udr3/seed_10/model_saved/nn_model_ep_75000.ckpt"
 # NN_MODELS_UDR_3="../data/all_models/udr_3/nn_model_ep_58000.ckpt"
 NN_MODELS_UDR_2="../data/all_models/udr_2/nn_model_ep_52400.ckpt"
 NN_MODELS_UDR_1="../data/all_models/udr_1/nn_model_ep_57400.ckpt"
 NN_MODELS_ADR="../data/all_models/genet/nn_model_ep_9900.ckpt"
 
 
-TRACE_PATH="../data/synthetic_test/"
+TRACE_PATH="../data/synthetic_test_plus/"
 SUMMARY_DIR="../sigcomm_artifact/synthetic/"
 
 LOG_STR="non"
