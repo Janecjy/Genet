@@ -273,12 +273,13 @@ def main():
         count = 1
         while count < num_epochs:
             sleep(10)
+            print(f"{agent_id} waiting for new epoch")
             new_epoch = redis_client.get(f"{agent_id}_new_epoch")
-            print("new_epoch: ", new_epoch)
+            print(f"{agent_id} new_epoch: {new_epoch}")
             # print("new_epoch: ", type(new_epoch))
             if new_epoch and int(new_epoch) == 1:
                 count += 1
-                print("Get new url with count: ", count)
+                print(f"{agent_id} get new url with count: ", count)
                 driver.get(url)
                 redis_client.set(f"{agent_id}_new_epoch", 0)
                 redis_client.set(f"{agent_id}_browser_active", 1)
