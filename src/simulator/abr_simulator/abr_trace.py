@@ -112,6 +112,8 @@ def generate_bw_time_series(T_s, duration, min_bw, max_bw):
         min_bw = min_bw
     else:
         min_bw = round(np.random.uniform(min_bw, max_bw * 0.6), 2)
+    min_bw += 5
+    max_bw += 5
     round_digit = 2
     ts = 0 # timestamp
     cnt = 0
