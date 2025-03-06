@@ -1,7 +1,20 @@
 servers:
-  - hostname: clnode075.clemson.cloudlab.us
+  - hostname: c220g1-031126.wisc.cloudlab.us
     branch: emulation-training
     redis: true
-  - hostname: clnode065.clemson.cloudlab.us
+
+  - hostname: c220g1-031122.wisc.cloudlab.us
     branch: emulation-training
-    redis: false
+    redis: true
+
+  - hostname: c220g1-031114.wisc.cloudlab.us
+    branch: emulation-training
+    redis: true
+
+  - hostname: c220g1-031116.wisc.cloudlab.us
+    branch: emulation-training
+    redis: true
+
+  - hostname: c220g1-031115.wisc.cloudlab.us
+    branch: emulation-training
+    redis: true

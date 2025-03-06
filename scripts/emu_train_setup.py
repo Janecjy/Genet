@@ -3,7 +3,6 @@ import time
 import os
 import yaml
 import concurrent.futures
-import socket
 import argparse
 
 # Parse command-line arguments
@@ -71,11 +70,14 @@ def run_remote_commands(server, commands):
     finally:
         client.close()
 
-def setup_server(server_config):
+def setup_server(server_config, server_index):
     """ Run full setup process for a single server in parallel """
     server = server_config["hostname"]
     branch = server_config["branch"]
     redis_node = server_config["redis"]
+
+    # Define Redis IP based on server index (starting from 1)
+    redis_ip = f"10.10.1.{server_index + 1}"
 
     setup_commands = [
         "sudo DEBIAN_FRONTEND=noninteractive apt-get update -y",
@@ -111,25 +113,23 @@ def setup_server(server_config):
         # Clone Genet repo and checkout correct branch
         "[ -d ~/Genet ] || git clone https://github.com/Janecjy/Genet.git ~/Genet",
         f"cd ~/Genet && git fetch --all && git checkout {branch} && git pull",
-
-        # # Install packages using Conda
-        # # "source ~/miniconda/bin/activate genet_env && cd ~/Genet && bash install.sh",
-        # # "source ~/miniconda/bin/activate genet_env && cd ~/Genet && bash install_python_dependency.sh",
+        "git config --global user.email janechen@cs.utexas.edu",
+        "git config --global user.name Janecjy",
 
         # Install emulation dependencies
-        "sudo apt-get -y install xvfb python3-pip python3-tk unzip",
+        "sudo DEBIAN_FRONTEND=noninteractive apt-get -y install xvfb python3-pip python3-tk unzip libnss3",
         # "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
-        # "sudo apt-get -yf install ./google-chrome-stable_current_amd64.deb",
+        # "sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install ./google-chrome-stable_current_amd64.deb",
 
         # Install Python dependencies inside Conda
-        "source ~/miniconda/bin/activate genet_env && pip install numpy tensorflow==1.15.0 selenium pyvirtualdisplay numba torch tflearn xvfbwrapper matplotlib redis"
-
+        "source ~/miniconda/bin/activate genet_env && pip install numpy tensorflow==1.15.0 selenium pyvirtualdisplay numba torch tflearn xvfbwrapper matplotlib redis scipy pandas"
     ]
     
+    # Redis configuration using the dynamically assigned IP
     if redis_node:
         redis_commands = [
-            f"tmux new-session -d -s redis 'redis-server --port {REDIS_PORT} --bind 10.10.1.1 --protected-mode no'",
-            f"echo 'Redis started on port {REDIS_PORT} in tmux session on {server}'"
+            f"tmux new-session -d -s redis 'redis-server --port {REDIS_PORT} --bind {redis_ip} --protected-mode no'",
+            f"echo 'Redis started on {redis_ip}:{REDIS_PORT} in tmux session on {server}'"
         ]
         setup_commands.extend(redis_commands)
     
@@ -161,7 +161,7 @@ def setup_server(server_config):
 
 # Run setup on all servers in parallel
 with concurrent.futures.ThreadPoolExecutor(max_workers=len(servers)) as executor:
-    futures = {executor.submit(setup_server, server_config): server_config["hostname"] for server_config in servers}
+    futures = {executor.submit(setup_server, server_config, i): server_config["hostname"] for i, server_config in enumerate(servers)}
     
     for future in concurrent.futures.as_completed(futures):
         server = futures[future]
