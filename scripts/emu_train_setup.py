@@ -21,7 +21,7 @@ username = "janechen"
 
 # Paths for local and remote chromedriver
 LOCAL_CHROMEDRIVER_PATH = "/home/jane/Desktop/Checkpoint-Combined_10RTT_6col_Transformer3_64_5_5_16_4_lr_1e-05-999iter.p"
-REMOTE_CHROMEDRIVER_PATH = "/users/janechen/Genet/results/abr/genet_mpc/seed_10/pensieve_train/"
+REMOTE_CHROMEDRIVER_PATH = "/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/"
 
 # Set custom Redis port
 REDIS_PORT = 2666  # Change this if needed
