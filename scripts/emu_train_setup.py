@@ -20,8 +20,8 @@ servers = config["servers"]
 username = "janechen"
 
 # Paths for local and remote chromedriver
-LOCAL_CHROMEDRIVER_PATH = "/home/jane/Downloads/chromedriver"
-REMOTE_CHROMEDRIVER_PATH = "/users/janechen/Genet/src/emulator/abr/pensieve/virtual_browser/abr_browser_dir/"
+LOCAL_CHROMEDRIVER_PATH = "/home/jane/Desktop/Checkpoint-Combined_10RTT_6col_Transformer3_64_5_5_16_4_lr_1e-05-999iter.p"
+REMOTE_CHROMEDRIVER_PATH = "/users/janechen/Genet/results/abr/genet_mpc/seed_10/pensieve_train/"
 
 # Set custom Redis port
 REDIS_PORT = 2666  # Change this if needed
@@ -44,7 +44,7 @@ def scp_file(server):
             sftp.mkdir(REMOTE_CHROMEDRIVER_PATH)
 
         sftp.put(LOCAL_CHROMEDRIVER_PATH, os.path.join(REMOTE_CHROMEDRIVER_PATH, os.path.basename(LOCAL_CHROMEDRIVER_PATH)))
-        print(f"Chromedriver successfully transferred to {server}:{REMOTE_CHROMEDRIVER_PATH}")
+        print(f"File successfully transferred to {server}:{REMOTE_CHROMEDRIVER_PATH}")
 
         sftp.close()
     except Exception as e:
@@ -152,14 +152,10 @@ def setup_server(server_config):
             "tmux new-session -d -s bpftrace 'cd ~/Genet/src/emulator/abr/pensieve/virtual_browser/ && sudo bpftrace check.bt > bpftrace_output.txt'"
         ]
         setup_commands.extend(bpftrace_commands)
-
-
+        scp_file(server)
 
     # Run setup commands
     run_remote_commands(server, setup_commands)
-
-    # Transfer chromedriver
-    # scp_file(server)
 
     print(f"Setup completed for {server}.")
 
