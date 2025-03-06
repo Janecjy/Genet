@@ -6,39 +6,34 @@ import signal
 from time import sleep
 from urllib.parse import ParseResult, parse_qsl, unquote, urlencode, urlparse
 import subprocess
+import logging
 from pyvirtualdisplay import Display
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import redis
 redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
-# print("Ping")
-redis_client.ping()
-print("Redis ping successful")
 
 from pensieve.virtual_browser.abr_server import run_abr_server
 
-# TO RUN: download https://pypi.python.org/packages/source/s/selenium/selenium-2.39.0.tar.gz
-# run sudo apt-get install python-setuptools
-# run sudo apt-get install xvfb
-# after untar, run sudo python setup.py install
-# follow directions here: https://pypi.python.org/pypi/PyVirtualDisplay to install pyvirtualdisplay
 
-# For chrome, need chrome driver: https://code.google.com/p/selenium/wiki/ChromeDriver
-# chromedriver variable should be path to the chromedriver
-# the default location for firefox is /usr/bin/firefox and chrome binary is /usr/bin/google-chrome
-# if they are at those locations, don't need to specify
+def setup_logger(logger_name, log_file, level=logging.INFO):
+    """Create and return a logger with a file handler."""
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(level)
 
-# ABR_ID_MAP = {
-#     'Default': 0,
-#     'FixedRate': 1,
-#     'BufferBased': 2,
-#     'RateBased': 3,
-#     'RL': 4,
-#     'RobustMPC': 4,
-#     'Festive': 5,
-#     'Bola': 6
-# }
+    # Avoid adding multiple handlers if logger already exists (e.g. multiprocess)
+    if not logger.handlers:
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        file_handler = logging.FileHandler(log_file, mode='w')
+        file_handler.setLevel(level)
+        formatter = logging.Formatter(
+            '%(asctime)s [%(name)s] %(levelname)s: %(message)s'
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+    return logger
 
 
 def parse_args():
@@ -160,6 +155,18 @@ def timeout_handler(signum, frame):
 
 def main():
     args = parse_args()
+
+    # Derive agent_id from summary dir (e.g. "pensieve_5_...")
+    agent_id = os.path.basename(args.summary_dir).split("_")[1]
+
+    # Set up a logger that writes to a file with the agent_id in the name
+    logger_name = f"{agent_id}_virtual_browser"
+    log_file = f"/mydata/logs/{agent_id}_virtual_browser.log"
+    logger = setup_logger(logger_name, log_file)
+
+    redis_client.ping()
+    logger.info("Redis ping successful")
+
     ip = args.ip
     port_number = args.port
     abr_algo = args.abr
@@ -169,29 +176,10 @@ def main():
     # trace_output = f"bpftrace_output.txt"
     # bpftrace_process = launch_bpftrace(trace_output)
 
-    # start abr server here
-    # prevent multiple process from being synchronized
+    logger.info("Starting ABR server in inference mode...")
+    logger.info(f"Summary dir: {args.summary_dir}")
 
-    # Start ABR server
-    # if args.train:
-    #     print("Starting ABR server in training mode...")
-    #     abr_server_proc = mp.Process(
-    #         target=run_training_server,
-    #         args=(
-    #             args.trace_file,
-    #             args.summary_dir,
-    #             args.actor_path,
-    #             args.video_size_file_dir,
-    #             args.num_agents,
-    #             args.model_save_interval,
-    #             args.num_epochs,
-    #             args.abr_server_ip,
-    #             args.abr_server_port
-    #         )
-    #     )
-    # else:
-    print("Starting ABR server in inference mode...")
-    print("Summary dir:", args.summary_dir)
+    # Launch the ABR server
     abr_server_proc = mp.Process(
         target=run_abr_server,
         args=(
@@ -204,7 +192,6 @@ def main():
             args.abr_server_port
         )
     )
-    agent_id = os.path.basename(args.summary_dir).split("_")[1]
     abr_server_proc.start()
     sleep(0.5)
 
@@ -222,10 +209,10 @@ def main():
                   'buffer_threshold': args.buffer_threshold,
                   'port': args.abr_server_port}
     url = add_url_params(url, url_params)
+    logger.info(f"Open {url}")
 
     # ip = json.loads(urlopen("http://ip.jsontest.com/").read().decode('utf-8'))['ip']
     # url = 'http://{}/myindex_{}.html'.format(ip, abr_algo)
-    print('Open', url)
     redis_client.set(f"{agent_id}_new_epoch", 0)
 
     # timeout signal
@@ -273,23 +260,30 @@ def main():
         count = 1
         while count < num_epochs:
             sleep(10)
-            print(f"{agent_id} waiting for new epoch")
+            logger.info(f"{agent_id} waiting for new epoch")
             new_epoch = redis_client.get(f"{agent_id}_new_epoch")
-            print(f"{agent_id} new_epoch: {new_epoch}")
-            # print("new_epoch: ", type(new_epoch))
+            logger.info(f"{agent_id} new_epoch: {new_epoch}")
             if new_epoch and int(new_epoch) == 1:
                 count += 1
-                print(f"{agent_id} get new url with count: ", count)
-                driver.get(url)
-                redis_client.set(f"{agent_id}_new_epoch", 0)
-                redis_client.set(f"{agent_id}_browser_active", 1)
+                logger.info(f"{agent_id} get new url with count: {count}")
+                try:
+                    driver.get(url)
+                    logger.info(f"{agent_id} get url succeeded")
+                    redis_client.set(f"{agent_id}_new_epoch", 0)
+                    redis_client.set(f"{agent_id}_browser_active", 1)
+                    logger.info(f"{agent_id} set new_epoch to 0")
+                except Exception as e:
+                    logs = driver.get_log('browser')
+                    print("Browser logs on exception:\n", logs)
+                    logger.info(f"Browser logs on exception:\n")
+                    raise e
 
         if args.train:
-            print("Video streaming started. Training in progress...")
-            print("Will run for", run_time, "seconds")
-            print("Model checkpoints will be saved every", args.model_save_interval, "epochs")
-            print("Training logs will be saved to", args.summary_dir)
-        
+            logger.info("Video streaming started. Training in progress...")
+            logger.info(f"Will run for {run_time} seconds")
+            logger.info(f"Model checkpoints saved every {args.model_save_interval} epochs")
+            logger.info(f"Training logs will be saved to {args.summary_dir}")
+
         sleep(run_time)
         abr_server_proc.wait()
         # bpftrace_process.wait()
@@ -297,9 +291,10 @@ def main():
         driver.quit()
         display.stop()
 
-        print('done')
+        logger.info("done")
 
     except Exception as e:
+        logger.exception("Exception in main loop")
         if display is not None:
             display.stop()
         if driver is not None:
