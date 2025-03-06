@@ -357,7 +357,7 @@ class Pensieve():
                     # print(f"Initial s_batch: {s_batch}")
                     s_batch, a_batch, r_batch, terminal, info = exp_queues[i].get()
                     self.train_logger.info(f"Agent {i} got exp_queues with {len(s_batch)} samples")
-                    print(f"After getting exp_queues: {s_batch}")
+                    # print(f"After getting exp_queues: {s_batch}")
                     print("s_batch size: ", len(s_batch))
                     # print(f"s_batch shape: {np.squeeze(np.stack(s_batch, axis=0), axis=1).shape}")
                     # print(f"a_batch shape: {np.vstack(a_batch).shape}")
@@ -985,7 +985,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         # 3) Launch Mahimahi + virtual browser
         mahimahi_dir = "src/emulator/abr"
         mm_cmd = (
-            f'mm-delay {delay_val} mm-loss uplink 0 mm-loss downlink 0 mm-link {UP_LINK_SPEED_FILE} {mahimahi_trace_path} -- bash -c \"python -m pensieve.virtual_browser.virtual_browser --ip \$MAHIMAHI_BASE --port 8000 --abr RLTrain --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/pensieve_{agent_id}_{delay_val} --trace-file {mahimahi_trace_path} --abr-server-port=8322\"'
+            f'mm-delay {delay_val} mm-loss uplink 0 mm-loss downlink 0 mm-link {UP_LINK_SPEED_FILE} {mahimahi_trace_path} -- bash -c \"python -m pensieve.virtual_browser.virtual_browser --ip \$MAHIMAHI_BASE --port 6626 --abr RLTrain --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/pensieve_{agent_id}_{delay_val} --trace-file {mahimahi_trace_path} --abr-server-port=8322\"'
         )
         print(f"[Agent {agent_id}] Starting environment:\n{mm_cmd}")
         agent_logger.info(f"[Agent {agent_id}] Starting environment:\n{mm_cmd}")

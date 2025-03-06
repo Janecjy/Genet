@@ -173,10 +173,10 @@ def main():
     set_seed(args.seed)
 
     ############################################################################
-    # 1) Start the video server on port 8000 (or whatever).
+    # 1) Start the video server on port 6626 (or whatever).
     ############################################################################
     video_server_dir = "src/emulator/abr/pensieve/video_server"
-    video_server_port = 8000
+    video_server_port = 6626
 
     # cd into the video_server folder, run python server
     # We run it in background so the main script can proceed.
