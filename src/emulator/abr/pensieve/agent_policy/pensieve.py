@@ -968,7 +968,6 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     redis_pipe.get(f"{agent_id}_state")
                     redis_pipe.get(f"{agent_id}_reward")
                     redis_pipe.get(f"{agent_id}_state_flag")
-                    redis_pipe.set(f"{agent_id}_state_flag", int(False))
                     try:
                         retval = redis_pipe.execute()
                     except Exception as e:
@@ -977,12 +976,15 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     #print(f"Retval {retval}")
                     if retval[2] is not None:
                         if int(retval[2]):
+                            agent_logger.info(f"[Agent {agent_id}] Received state flag: {retval[2]}")
+                            redis_client.set(f"{agent_id}_state_flag", int(False))
                             state = json.loads(retval[0])
                             reward = float(retval[1])
                             # print(f"[Agent {agent_id}] Received state: {state}.")
                             recv_state = True
                     end_of_video = redis_client.get(f"{agent_id}_stop_flag")
                     if end_of_video and int(end_of_video) == 1:
+                        agent_logger.info(f"[Agent {agent_id}] end_of_video received: {end_of_video}")
                         recv_state = True
 
                 # If state received, process it

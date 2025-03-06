@@ -9,9 +9,9 @@ import time
 import json
 import redis
 # print("Pong")
-redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
-print("Ping Redis success")
-redis_client.ping()
+# redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
+# print("Ping Redis success")
+# redis_client.ping()
 import numpy as np
 import logging
 
@@ -76,10 +76,10 @@ def make_request_handler(server_states):
             self.summary_dir = server_states['summary_dir']
             self.agent_id = server_states['agent_id'] #"0"#os.path.basename(self.summary_dir).split("_")[1]
             print("Agent ID {}".format(self.agent_id))
-            print("Redis keys {}".format(redis_client.keys()))
+            # print("Redis keys {}".format(redis_client.keys()))
             self.redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
             print("Redis end")
-            print("Redis keys {}".format(redis_client.keys()))
+            # print("Redis keys {}".format(redis_client.keys()))
             BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
             logging.basicConfig(filename="/mydata/logs/"+str(self.agent_id)+"_request.log", level=logging.INFO)
             self.logger = logging.getLogger()
@@ -185,11 +185,14 @@ def make_request_handler(server_states):
                     self.server_states['state'][0, 5, -1] = state5
 
                 except ZeroDivisionError:
+                    print(f"ZeroDivisionError")
+                    self.logger.info(f"ZeroDivisionError")
                     pass
                 
                 state_msg = self.server_states['state'].tolist()
                 # print("Test sfas ")
                 print(f"redis pipe get {self.redis_client.get(f'{self.agent_id}_action_flag')}")
+                self.logger.info(f"redis pipe get {self.redis_client.get(f'{self.agent_id}_action_flag')}")
                 # print (f"Server State {state_msg}")
                 # print("Pipe Set")
                 redis_pipe = self.redis_client.pipeline(transaction=True)
@@ -245,14 +248,13 @@ def make_request_handler(server_states):
                         redis_pipe = self.redis_client.pipeline(transaction=True)
                         state = redis_pipe.get(f"{self.agent_id}_action")
                         flag = redis_pipe.get(f"{self.agent_id}_action_flag")
-                        redis_pipe.set(f"{self.agent_id}_action_flag", int(False))
-                        
                         try:
                             retval = redis_pipe.execute()
                         except Exception as e:
                             print(f"Exception execute {e}")
                             self.logger.info(f"Exception execute {e}")
                         if retval[1] and int(retval[1]):
+                            self.redis_client.set(f"{self.agent_id}_action_flag", int(False))
                             bit_rate = int(retval[0])
                             action_recv = True
                             print(f"RLTrain received action {bit_rate}")
