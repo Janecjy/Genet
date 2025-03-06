@@ -136,12 +136,17 @@ def setup_server(server_config):
     # If the branch is `network-state`, add additional setup commands
     if branch == "network-state":
         bpftrace_commands = [
-            "echo 'deb http://ddebs.ubuntu.com $(lsb_release -cs) main restricted universe multiverse' | sudo tee -a /etc/apt/sources.list.d/ddebs.list",
-            "echo 'deb http://ddebs.ubuntu.com $(lsb_release -cs)-updates main restricted universe multiverse' | sudo tee -a /etc/apt/sources.list.d/ddebs.list",
-            "echo 'deb http://ddebs.ubuntu.com $(lsb_release -cs)-proposed main restricted universe multiverse' | sudo tee -a /etc/apt/sources.list.d/ddebs.list",
-            "sudo apt install -y ubuntu-dbgsym-keyring",
-            "sudo apt update",
-            "sudo apt install -y bpftrace-dbgsym",
+            # Add ddebs repository with correct evaluation of `lsb_release -cs`
+            "sudo sh -c 'echo \"deb http://ddebs.ubuntu.com $(lsb_release -cs) main restricted universe multiverse\" > /etc/apt/sources.list.d/ddebs.list'",
+            "sudo sh -c 'echo \"deb http://ddebs.ubuntu.com $(lsb_release -cs)-updates main restricted universe multiverse\" >> /etc/apt/sources.list.d/ddebs.list'",
+            "sudo sh -c 'echo \"deb http://ddebs.ubuntu.com $(lsb_release -cs)-proposed main restricted universe multiverse\" >> /etc/apt/sources.list.d/ddebs.list'",
+
+            # Install debug keyring and update package lists
+            "sudo DEBIAN_FRONTEND=noninteractive apt install -y ubuntu-dbgsym-keyring",
+            "sudo DEBIAN_FRONTEND=noninteractive apt update",
+
+            # Install bpftrace debug symbols
+            "sudo DEBIAN_FRONTEND=noninteractive apt install -y bpftrace-dbgsym",
 
             # Start BPFTrace in a tmux session
             "tmux new-session -d -s bpftrace 'cd ~/Genet/src/emulator/abr/pensieve/virtual_browser/ && sudo bpftrace check.bt > bpftrace_output.txt'"
