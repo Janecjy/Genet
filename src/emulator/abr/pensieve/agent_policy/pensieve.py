@@ -32,7 +32,6 @@ from models import *
 # from .models import create_mask
 
 MODEL_SAVE_INTERVAL = 500
-MODEL_SAVE_INTERVAL = 500
 VIDEO_BIT_RATE = [300, 750, 1200, 1850, 2850, 4300]  # Kbps
 # VIDEO_BIT_RATE = [300, 1200, 2850, 6500, 33000, 165000]
 HD_REWARD = [1, 2, 3, 12, 15, 20]
@@ -42,16 +41,6 @@ REBUF_PENALTY = 43  # 1 sec rebuffering -> 3 Mbps
 SMOOTH_PENALTY = 1
 DEFAULT_QUALITY = 0  # default video quality without agent
 BITRATE_DIM = 6
-DEVICE = 'cpu'
-EMBEDDING_SIZE = 64
-
-BUCKET_BOUNDARIES = {
-    1: [0.12, 0.2, 0.28, 0.43, 0.55, 0.83, 1.03, 1.29, 1.63, 2.12, 3.64, 4.02, 5.74, 8, 12, 14],
-    2: [0.01, 0.3, 0.38, 0.44, 0.49, 0.54, 0.6, 0.68, 0.84, 1.41, 3, 5, 205, 395, 1206],
-    3: [0.01, 0.08, 0.11, 0.15, 0.23, 0.45, 0.8, 0.9, 1, 1.75],
-    4: [0.0002, 0.0047, 0.0361, 0.1, 0.2, 0.3],
-    5: [0.75, 1, 1.001, 1.003, 1.012, 1.25, 3.52, 4.7, 5.39, 6.26]
-}
 DEVICE = 'cpu'
 EMBEDDING_SIZE = 64
 
@@ -297,12 +286,10 @@ class Pensieve():
 
             actor = a3c.ActorNetwork(sess,
                                      state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
-                                     state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
                                      action_dim=A_DIM,
                                      bitrate_dim=BITRATE_DIM)
                                      # learning_rate=args.ACTOR_LR_RATE)
             critic = a3c.CriticNetwork(sess,
-                                       state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
                                        state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
                                        learning_rate=CRITIC_LR_RATE,
                                        bitrate_dim=BITRATE_DIM)
@@ -860,7 +847,7 @@ def compute_token():
     open(bprtrace_path, 'w').close()  # simple truncation
     return metrics_array
 
-transformer = torch.load("/users/janechen/Genet/results/abr/genet_mpc/seed_10/pensieve_train/Checkpoint-Large_Combined_10RTT_6col_Transformer3_256_8_8_64_8_lr_1e-05-999iter.p", map_location='cpu')
+transformer = torch.load("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/Checkpoint-Combined_10RTT_6col_Transformer3_64_5_5_16_4_lr_1e-05-999iter.p", map_location='cpu')
 transformer.eval()
 def add_embedding(state, tokens, embeddings):
     """
@@ -957,11 +944,6 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         critic = a3c.CriticNetwork(sess, state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
                                   learning_rate=CRITIC_LR_RATE,
                                   bitrate_dim=BITRATE_DIM)
-        actor = a3c.ActorNetwork(sess, state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
-                                 action_dim=A_DIM, bitrate_dim=BITRATE_DIM)
-        critic = a3c.CriticNetwork(sess, state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
-                                  learning_rate=CRITIC_LR_RATE,
-                                  bitrate_dim=BITRATE_DIM)
 
         # Initial synchronization of network parameters from the coordinator
         # Initial synchronization of network parameters from the coordinator
@@ -970,6 +952,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         critic.set_network_params(critic_net_params)
 
         last_bit_rate = DEFAULT_QUALITY
+        selection = 0
         bit_rate = DEFAULT_QUALITY
 
         action_vec = np.zeros(A_DIM)
@@ -1068,19 +1051,6 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     state, embeddings = add_embedding(state, tokens, embeddings)
                     print(f"State shape after embedding: {state.shape}")
                     
-                    print(f"State shape before embedding: {state.shape}")
-                    
-                    # Compute tokens and embed
-                    if tokens.shape[0] > WINDOW:
-                        tokens = np.concatenate((tokens, compute_token()), axis=0)
-                        # only keep the last WINDOW size of tokens
-                        tokens = tokens[-WINDOW:]
-                    else:
-                        tokens = compute_token()
-                    print(f"Tokens: {tokens}")
-                    state, embeddings = add_embedding(state, tokens, embeddings)
-                    print(f"State shape after embedding: {state.shape}")
-                    
                     r_batch.append(reward)
                 # time_stamp += delay  # in ms
                 # time_stamp += sleep_time  # in ms  
@@ -1127,16 +1097,11 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         actor.set_network_params(actor_net_params)
                         critic.set_network_params(critic_net_params)
 
-                    # Reset batches
-                    del s_batch[:]
-                    del a_batch[:]
-                    del r_batch[:]
-                    del entropy_record[:]
-                    # Reset batches
-                    del s_batch[:]
-                    del a_batch[:]
-                    del r_batch[:]
-                    del entropy_record[:]
+                        # Reset batches
+                        del s_batch[:]
+                        del a_batch[:]
+                        del r_batch[:]
+                        del entropy_record[:]
 
                         # so that in the log we know where video ends
 

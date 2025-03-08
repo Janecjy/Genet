@@ -134,14 +134,13 @@ def add_url_params(url, params):
 def timeout_handler(signum, frame):
     raise Exception("Timeout")
 
-# def launch_bpftrace(trace_output_file):
-#     """Launch bpftrace script and return the process."""
-#     cmd = "sudo bpftrace check.bt > bpftrace_output.txt"
-#     print("Launching bpftrace...")
+def launch_bpftrace(trace_output_file):
+    """Launch bpftrace script and return the process."""
+    cmd = "sudo bpftrace check.bt > bpftrace_output.txt"
     
-#     # with open(trace_output_file, 'w') as f:
-#     process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE)
-#     check_interval = 10
+    # with open(trace_output_file, 'w') as f:
+    process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE)
+    check_interval = 10
 
     # Start log rotation process
 #     rotation_cmd = f"watch -n {check_interval} python3 -c '\
@@ -286,7 +285,6 @@ def main():
 
         sleep(run_time)
         abr_server_proc.wait()
-        # bpftrace_process.wait()
 
         driver.quit()
         display.stop()
