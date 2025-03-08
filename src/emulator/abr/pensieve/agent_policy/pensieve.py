@@ -706,6 +706,8 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         mm_cmd = (
             f'mm-delay {delay_val} mm-loss uplink 0 mm-loss downlink 0 mm-link {UP_LINK_SPEED_FILE} {mahimahi_trace_path} -- bash -c \"python -m pensieve.virtual_browser.virtual_browser --ip \$MAHIMAHI_BASE --port 6626 --abr RLTrain --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/pensieve_{agent_id}_{delay_val} --trace-file {mahimahi_trace_path} --abr-server-port=8322\"'
         )
+        # abr_server_port = 8322+agent_id
+        # mm_cmd = f"python -m pensieve.virtual_browser.virtual_browser --ip 127.0.0.1 --port 6626 --abr RLTrain --video-size-file-dir {VIDEO_SIZE_DIR} --summary-dir {summary_dir}/pensieve_{agent_id}_{delay_val} --trace-file {mahimahi_trace_path} --abr-server-port={abr_server_port}"
         # print (mm_cmd)
         print(f"[Agent {agent_id}] Starting environment:\n{mm_cmd}")
         agent_logger.info(f"[Agent {agent_id}] Starting environment:\n{mm_cmd}")

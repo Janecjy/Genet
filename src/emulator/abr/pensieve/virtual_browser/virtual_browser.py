@@ -254,8 +254,8 @@ def main():
         # run chrome
         num_epochs = 75000
         driver.set_page_load_timeout(10)
-        driver.get(url)
         redis_client.set(f"{agent_id}_browser_active", 1)
+        driver.get(url)
         count = 1
         while count < num_epochs:
             sleep(10)
@@ -266,11 +266,11 @@ def main():
                 count += 1
                 logger.info(f"{agent_id} get new url with count: {count}")
                 try:
-                    driver.get(url)
                     logger.info(f"{agent_id} get url succeeded")
                     redis_client.set(f"{agent_id}_new_epoch", 0)
                     redis_client.set(f"{agent_id}_browser_active", 1)
                     logger.info(f"{agent_id} set new_epoch to 0")
+                    driver.get(url)
                 except Exception as e:
                     logs = driver.get_log('browser')
                     print("Browser logs on exception:\n", logs)
