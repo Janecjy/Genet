@@ -12,7 +12,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import redis
-redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
+redis_client = redis.Redis(host="10.10.1.2", port=2666, decode_responses=True)
 
 from pensieve.virtual_browser.abr_server import run_abr_server
 
@@ -157,7 +157,7 @@ def main():
 
     # Derive agent_id from summary dir (e.g. "pensieve_5_...")
     agent_id = os.path.basename(args.summary_dir).split("_")[1]
-
+    print(agent_id)
     # Set up a logger that writes to a file with the agent_id in the name
     logger_name = f"{agent_id}_virtual_browser"
     log_file = f"/mydata/logs/{agent_id}_virtual_browser.log"
@@ -216,7 +216,8 @@ def main():
 
     # timeout signal
     signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(run_time + 30)
+    # original code set up timeout if test not finished in run_time+30 seconds
+    #signal.alarm(run_time + 30) 
     display = None
     driver = None
     try:
@@ -252,9 +253,11 @@ def main():
                                   desired_capabilities=desired_caps)
 
         # run chrome
-        num_epochs = 75000
+        #num_epochs = 75000
+        num_epochs = args.num_epochs
         driver.set_page_load_timeout(10)
         redis_client.set(f"{agent_id}_browser_active", 1)
+        redis_client.set(f"{agent_id}_stop_flag", int(False))
         driver.get(url)
         count = 1
         while count < num_epochs:
@@ -284,12 +287,20 @@ def main():
             logger.info(f"Training logs will be saved to {args.summary_dir}")
 
         sleep(run_time)
-        abr_server_proc.wait()
+
+        if args.train:
+            abr_server_proc.join()
+        if run_time == 0:
+            stop_flag = redis_client.get(f"{agent_id}_stop_flag")
+            while(stop_flag and int(stop_flag) == 0):
+                sleep(60)
+                stop_flag = redis_client.get(f"{agent_id}_stop_flag")
 
         driver.quit()
         display.stop()
 
         logger.info("done")
+        abr_server_proc.terminate()
 
     except Exception as e:
         logger.exception("Exception in main loop")

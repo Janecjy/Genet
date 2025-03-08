@@ -22,7 +22,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = ''
 UP_LINK_SPEED_FILE = "pensieve/data/12mbps"  # example
 VIDEO_SIZE_DIR = "pensieve/data/video_sizes"  # example
 
-redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
+redis_client = redis.Redis(host="10.10.1.2", port=2666, decode_responses=True)
 redis_client.flushdb()
 
 def parse_args():

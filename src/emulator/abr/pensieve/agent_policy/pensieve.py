@@ -652,7 +652,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
     agent_logger.info("Agent %d started!", agent_id)
 
     # 1) Create redis for state/action communication
-    redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
+    redis_client = redis.Redis(host="10.10.1.2", port=2666, decode_responses=True)
     redis_client.set(f"{agent_id}_action_flag", int(False))
 
     with tf.compat.v1.Session() as sess:
