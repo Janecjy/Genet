@@ -10,6 +10,9 @@
 # - Use --emulation-seed to specify the seed for emulation mode (default: 10).
 ##############################################################################
 set -e
+rm -rf /mydata/results/*
+rm -rf /mydata/logs/*
+
 save_dir=/mydata/results/abr
 video_size_file_dir=data/abr/video_sizes
 val_trace_dir=data/abr/val_FCC
