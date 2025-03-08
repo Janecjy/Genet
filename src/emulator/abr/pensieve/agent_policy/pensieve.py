@@ -917,7 +917,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
     time.sleep(1.0)
 
     # 3) Create redis for state/action communication
-    redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
+    redis_client = redis.Redis(host="10.10.1.2", port=2666, decode_responses=True)
     redis_client.set(f"{agent_id}_action_flag", int(False))
     # redis_client.set(f"{agent_id}_stop_flag", int(False))
 
