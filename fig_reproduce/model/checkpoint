@@ -1,0 +1,2 @@
+model_checkpoint_path: "~/Genet/fig_reproduce/model/nn_model_ep_600.ckpt"
+all_model_checkpoint_paths: "~/Genet/fig_reproduce/model/nn_model_ep_600.ckpt"
