@@ -172,21 +172,6 @@ def main():
     save_args(args, args.save_dir)
     set_seed(args.seed)
 
-    ############################################################################
-    # 1) Start the video server on port 6626 (or whatever).
-    ############################################################################
-    video_server_dir = "src/emulator/abr/pensieve/video_server"
-    video_server_port = 6626
-
-    # cd into the video_server folder, run python server
-    # We run it in background so the main script can proceed.
-    print("Starting video server on port={}".format(video_server_port))
-    video_server_proc = subprocess.Popen(
-        ["python", "video_server.py", "--port={}".format(video_server_port)],
-        cwd=video_server_dir
-    )
-    time.sleep(1.5)  # give it a moment to start
-
     
     ############################################################################
     # 2) Build the list of (delay, trace_file) pairs from --train-trace-dir

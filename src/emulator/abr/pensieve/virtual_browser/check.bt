@@ -5,8 +5,22 @@ BEGIN {
   printf("time_us,srtt(us),rttvar,rate_delivered,rate_interval_us,mss_cache,lost,lost_out,snd_cwnd,sk_sndbuf,");
   printf("sk_wmem_queued\n");
 }
+
+/**
+  We assume the user provides 1 argument, $1, which is the port number to filter.
+  e.g.  bpftrace check.bt 6626
+  
+  The if-condition below checks:
+    - $1 > 0, so the script won’t run if no port is passed
+    - skc_num == $1    means local port == $1
+      or
+    - skc_dport == $1  means remote port == $1
+*/
 kprobe:tcp_rcv_established
-/((struct sock *)arg0)->__sk_common.skc_num == 6626 || ((struct sock *)arg0)->__sk_common.skc_dport == 6626/
+/$1 > 0 && (
+    ((struct sock *)arg0)->__sk_common.skc_num   == $1 ||
+    ((struct sock *)arg0)->__sk_common.skc_dport == $1
+  )/
 {
   $sock = (struct sock *)arg0;
   $tcps = (struct tcp_sock *)arg0;
@@ -22,5 +36,5 @@ kprobe:tcp_rcv_established
     $tcps->snd_cwnd,
     $sock->sk_sndbuf,
     $sock->sk_wmem_queued
-    );
+  );
 }
