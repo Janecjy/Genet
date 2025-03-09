@@ -22,8 +22,6 @@ sys.path.append('/users/janechen/Genet/src')
 sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve")
 sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy")
 print("Pensieve sys path: ", sys.path)
-sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy")
-print("Pensieve sys path: ", sys.path)
 from emulator.abr.pensieve import a3c
 from emulator.abr.pensieve.utils import linear_reward
 from models import *
@@ -744,7 +742,7 @@ def get_last_line(file_path):
         last_line = f.readline().decode()
     return last_line
 
-bprtrace_path = "/users/janechen/Genet/results/abr/genet_mpc/seed_10/pensieve_train/log/bpftrace_output.txt"
+bprtrace_path = "/users/janechen/Genet/src/emulator/abr/pensieve/virtual_browser/bpftrace_output.txt"
 def compute_token():
     """
     Spawns the TokenAggregator, which continuously reads bpftrace_output.txt
@@ -871,6 +869,7 @@ def add_embedding(state, tokens, embeddings):
         # Not enough tokens to compute embedding
         print("Not enough tokens to compute embedding. Using zero embeddings.")
         # if state has 3 dimensions, squeeze
+        print("state shape before embedding:", state.shape)  # [6, 6]
         if len(state.shape) == 3 and state.shape[1] == S_INFO:
             updated_state = np.concatenate((state.squeeze(0), embeddings), axis=0)  # [6 + 64, 6] = [70, 6]
         elif state.shape[0] == S_INFO:
@@ -1108,7 +1107,6 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     # store the state and action into batches
                     agent_logger.info(f"[Agent {agent_id}] end_of_video check 2: {end_of_video}")
                     if end_of_video and int(end_of_video) == 1:
-                    if end_of_video and int(end_of_video) == 1:
                         last_bit_rate = DEFAULT_QUALITY
                         bit_rate = DEFAULT_QUALITY  # use the default action here
                         #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
@@ -1117,8 +1115,6 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         action_vec[selection] = 1
                         s_batch.append(np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN)))
                         a_batch.append(action_vec)
-                        tokens = np.array([])
-                        embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
                         tokens = np.array([])
                         embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
                         epoch += 1

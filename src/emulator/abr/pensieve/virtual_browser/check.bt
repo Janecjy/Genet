@@ -6,7 +6,7 @@ BEGIN {
   printf("sk_wmem_queued\n");
 }
 kprobe:tcp_rcv_established
-/((struct sock *)arg0)->__sk_common.skc_num == 8000 || ((struct sock *)arg0)->__sk_common.skc_dport == 8000/
+/((struct sock *)arg0)->__sk_common.skc_num == 6626 || ((struct sock *)arg0)->__sk_common.skc_dport == 6626/
 {
   $sock = (struct sock *)arg0;
   $tcps = (struct tcp_sock *)arg0;
