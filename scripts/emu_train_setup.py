@@ -89,13 +89,20 @@ def setup_server(server_config, server_index):
         "[ -d ~/mahimahi ] || git clone https://github.com/ravinet/mahimahi ~/mahimahi",
         "cd ~/mahimahi && ./autogen.sh && ./configure && make && sudo make install",
 
-        # # Install BPFTrace
-        # "echo 'deb http://ddebs.ubuntu.com $(lsb_release -cs) main restricted universe multiverse' | sudo tee -a /etc/apt/sources.list.d/ddebs.list",
-        # "echo 'deb http://ddebs.ubuntu.com $(lsb_release -cs)-updates main restricted universe multiverse' | sudo tee -a /etc/apt/sources.list.d/ddebs.list",
-        # "echo 'deb http://ddebs.ubuntu.com $(lsb_release -cs)-proposed main restricted universe multiverse' | sudo tee -a /etc/apt/sources.list.d/ddebs.list",
-        # "sudo apt install -y ubuntu-dbgsym-keyring",
-        # "sudo apt update",
-        # "sudo apt install -y bpftrace-dbgsym",
+        # Install BPFTrace
+        "sudo sh -c 'echo \"deb http://ddebs.ubuntu.com $(lsb_release -cs) main restricted universe multiverse\" > /etc/apt/sources.list.d/ddebs.list'",
+        "sudo sh -c 'echo \"deb http://ddebs.ubuntu.com $(lsb_release -cs)-updates main restricted universe multiverse\" >> /etc/apt/sources.list.d/ddebs.list'",
+        "sudo sh -c 'echo \"deb http://ddebs.ubuntu.com $(lsb_release -cs)-proposed main restricted universe multiverse\" >> /etc/apt/sources.list.d/ddebs.list'",
+
+        # Install debug keyring and update package lists
+        "sudo DEBIAN_FRONTEND=noninteractive apt install -y ubuntu-dbgsym-keyring",
+        "sudo DEBIAN_FRONTEND=noninteractive apt update",
+
+        # Install bpftrace debug symbols
+        "sudo DEBIAN_FRONTEND=noninteractive apt install -y bpftrace-dbgsym",
+
+        # Start BPFTrace in a tmux session
+        # "tmux new-session -d -s bpftrace 'cd ~/Genet/src/emulator/abr/pensieve/virtual_browser/ && sudo bpftrace check.bt > bpftrace_output.txt'"
         
 
         # Install Redis
@@ -117,42 +124,32 @@ def setup_server(server_config, server_index):
         "git config --global user.name Janecjy",
 
         # Install emulation dependencies
-        "sudo DEBIAN_FRONTEND=noninteractive apt-get -y install xvfb python3-pip python3-tk unzip libnss3",
-        # "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
-        # "sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install ./google-chrome-stable_current_amd64.deb",
+        "sudo DEBIAN_FRONTEND=noninteractive apt-get -y install xvfb python3-pip python3-tk unzip",
+        "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
+        "sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install ./google-chrome-stable_current_amd64.deb",
 
         # Install Python dependencies inside Conda
         "source ~/miniconda/bin/activate genet_env && pip install numpy tensorflow==1.15.0 selenium pyvirtualdisplay numba torch tflearn xvfbwrapper matplotlib redis scipy pandas"
+
+        "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
+        "sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install ./google-chrome-stable_current_amd64.deb"
     ]
     
     # Redis configuration using the dynamically assigned IP
-    if redis_node:
-        redis_commands = [
-            f"tmux new-session -d -s redis 'redis-server --port {REDIS_PORT} --bind {redis_ip} --protected-mode no'",
-            f"echo 'Redis started on {redis_ip}:{REDIS_PORT} in tmux session on {server}'"
-        ]
-        setup_commands.extend(redis_commands)
+    # if redis_node:
+    #     redis_commands = [
+    #         f"tmux new-session -d -s redis 'redis-server --port {REDIS_PORT} --bind {redis_ip} --protected-mode no'",
+    #         f"echo 'Redis started on {redis_ip}:{REDIS_PORT} in tmux session on {server}'"
+    #     ]
+    #     setup_commands.extend(redis_commands)
     
     # If the branch is `network-state`, add additional setup commands
-    if branch == "network-state":
-        bpftrace_commands = [
-            # Add ddebs repository with correct evaluation of `lsb_release -cs`
-            "sudo sh -c 'echo \"deb http://ddebs.ubuntu.com $(lsb_release -cs) main restricted universe multiverse\" > /etc/apt/sources.list.d/ddebs.list'",
-            "sudo sh -c 'echo \"deb http://ddebs.ubuntu.com $(lsb_release -cs)-updates main restricted universe multiverse\" >> /etc/apt/sources.list.d/ddebs.list'",
-            "sudo sh -c 'echo \"deb http://ddebs.ubuntu.com $(lsb_release -cs)-proposed main restricted universe multiverse\" >> /etc/apt/sources.list.d/ddebs.list'",
-
-            # Install debug keyring and update package lists
-            "sudo DEBIAN_FRONTEND=noninteractive apt install -y ubuntu-dbgsym-keyring",
-            "sudo DEBIAN_FRONTEND=noninteractive apt update",
-
-            # Install bpftrace debug symbols
-            "sudo DEBIAN_FRONTEND=noninteractive apt install -y bpftrace-dbgsym",
-
-            # Start BPFTrace in a tmux session
-            "tmux new-session -d -s bpftrace 'cd ~/Genet/src/emulator/abr/pensieve/virtual_browser/ && sudo bpftrace check.bt > bpftrace_output.txt'"
-        ]
-        setup_commands.extend(bpftrace_commands)
-        scp_file(server)
+    # if branch == "network-state":
+    #     bpftrace_commands = [
+    #         # Add ddebs repository with correct evaluation of `lsb_release -cs`
+            
+    #     setup_commands.extend(bpftrace_commands)
+    scp_file(server)
 
     # Run setup commands
     run_remote_commands(server, setup_commands)

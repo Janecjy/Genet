@@ -24,7 +24,7 @@ username = "janechen"
 REDIS_PORT = 2666
 
 def run_remote_commands(server, commands):
-    """ SSH into the server and execute the given commands sequentially. """
+    """SSH into the server and execute the given commands sequentially."""
     print(f"Connecting to {server}...")
 
     client = paramiko.SSHClient()
@@ -35,8 +35,7 @@ def run_remote_commands(server, commands):
         for cmd in commands:
             print(f"[{server}] $ {cmd}")
             stdin, stdout, stderr = client.exec_command(cmd)
-            # Short delay to ensure commands run sequentially
-            time.sleep(1)
+            time.sleep(1)  # brief pause to let commands run
 
             out = stdout.read().decode().strip()
             err = stderr.read().decode().strip()
@@ -52,56 +51,67 @@ def run_remote_commands(server, commands):
         client.close()
 
 def train_server(server_config, index):
-    """ Execute the training sequence on the remote server. """
+    """Execute the training sequence on the remote server."""
     server = server_config["hostname"]
-    # For indexing starting at 1, to match the typical IP pattern:
     redis_ip = f"10.10.1.{index + 1}"
-
-    # Dynamically set emulation seed (10 * (node_index + 1))
     emulation_seed = 10 * (index + 1)
     log_filename = f"/mydata/logs/emu_{emulation_seed}.out"
 
-    # The commands to run on each server in sequence:
     commands = [
-        # 1) Kill all active tmux sessions
+        # 1) Kill all tmux sessions (clean slate)
         "tmux kill-server || true",
 
-        # 2) Remove /mydata/*
+        # 2) Clean up /mydata/*
         "rm -rf /mydata/*",
-        "mkdir -p /mydata/logs",  # Recreate logs directory if needed
+        "mkdir -p /mydata/logs",
 
-        # 3) Go to ~/Genet, switch to network-state branch, and pull latest
-        "cd ~/Genet && git checkout network-state && git pull",
+        # 3) Check out network-state branch and pull
+        # "cd ~/Genet && git checkout network-state && git pull",
+        "cd ~/Genet && git reset --hard && git pull",
 
-        # 4) Start bpftrace in a tmux session
-        "tmux new-session -d -s bpftrace "
-        "'cd ~/Genet/src/emulator/abr/pensieve/virtual_browser/ && sudo bpftrace check.bt > bpftrace_output.txt'",
+        # 4) Create a single main tmux session in detached mode
+        "tmux new-session -d -s main 'bash'",
 
-        # 5) Start Redis in a tmux session
-        f"tmux new-session -d -s redis 'redis-server --port {REDIS_PORT} --bind {redis_ip} --protected-mode no'",
+        # 5) In the main session, create a new window for Redis
+        # "tmux new-window -t main -n redis_window",
 
-        # 6) Replace all occurrences of 10.10.1.1 with the current redis_ip
-        f"grep -rl '10.10.1.1' ~/Genet/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.1/{redis_ip}/g'",
+        # Send the Redis command to that window
+        # f"tmux send-keys -t main:redis_window 'redis-server --port {REDIS_PORT} --bind {redis_ip} --protected-mode no' C-m",
 
-        # 7) Start the training in a tmux session with our dynamic emulation seed
-        "tmux new-session -d -s training "
-        f"'source ~/miniconda/bin/activate genet_env && "
-        " cd ~/Genet && "
-        f" src/drivers/abr/train_udr3_emu_par.sh --mode emulation --emulation-seed {emulation_seed} "
-        f" 2>&1 | tee {log_filename}'"
+        # Wait a bit, then verify Redis is running
+        # "sleep 3",
+        # "tmux send-keys -t main:redis_window 'ps aux | grep redis-server' C-m",
+
+        # 6) In the main session, create a new window for bpftrace
+        # "tmux new-window -t main -n bpftrace_window",
+        # "tmux send-keys -t main:bpftrace_window "
+        # "'cd ~/Genet/src/emulator/abr/pensieve/virtual_browser/ && sudo bpftrace check.bt > bpftrace_output.txt' C-m",
+
+        # 7) Replace any '10.10.1.1' with redis_ip in .py files only
+        f"grep -rl --include='*.py' '10.10.1.1' ~/Genet/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.1/{redis_ip}/g' || true",
+
+        # 8) In the main session, create a training window
+        "tmux new-window -t main -n training_window",
+
+        # Activate conda env, then run the training script in training_window
+        f"tmux send-keys -t main:training_window "
+        f"'source ~/miniconda/bin/activate genet_env && cd ~/Genet && "
+        f"src/drivers/abr/train_udr3_emu_par.sh --mode emulation --emulation-seed {emulation_seed} "
+        f"2>&1 | tee {log_filename}' C-m",
+
+        # Optionally list the tmux sessions so we can confirm they've all been created
+        "tmux ls"
     ]
 
     run_remote_commands(server, commands)
     print(f"Training sequence started on {server} (seed={emulation_seed}).")
 
 if __name__ == "__main__":
-    # Run training on all servers in parallel
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(servers)) as executor:
         futures = {
             executor.submit(train_server, server_config, i): server_config["hostname"]
             for i, server_config in enumerate(servers)
         }
-
         for future in concurrent.futures.as_completed(futures):
             server = futures[future]
             try:
