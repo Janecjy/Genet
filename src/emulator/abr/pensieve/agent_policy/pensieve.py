@@ -40,7 +40,7 @@ SMOOTH_PENALTY = 1
 DEFAULT_QUALITY = 0  # default video quality without agent
 BITRATE_DIM = 6
 DEVICE = 'cpu'
-EMBEDDING_SIZE = 64
+EMBEDDING_SIZE = 16
 
 BUCKET_BOUNDARIES = {
     1: [0.12, 0.2, 0.28, 0.43, 0.55, 0.83, 1.03, 1.29, 1.63, 2.12, 3.64, 4.02, 5.74, 8, 12, 14],
@@ -887,7 +887,7 @@ def add_embedding(state, tokens, embeddings):
         src_mask, tgt_mask, _, _ = create_mask(enc_input, dec_input, pad_idx=2, device=DEVICE)
         
         # Transformer forward pass
-        out_probs, encoder_out = transformer(
+        encoder_out = transformer(
             enc_input, dec_input, 
             src_mask=src_mask, 
             tgt_mask=tgt_mask,
@@ -1034,7 +1034,6 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         recv_state = True
 
                 # If state received, process it
-                # If state received, process it
                 if recv_state:
                     state = np.array(state)
                     print(f"State shape before embedding: {state.shape}")
@@ -1046,7 +1045,8 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         tokens = tokens[-WINDOW:]
                     else:
                         tokens = compute_token()
-                    print(f"Tokens: {tokens}")
+                    print(f"add_embedding1 state shape: {state.shape}")
+                    # print(f"Tokens: {tokens}")
                     state, embeddings = add_embedding(state, tokens, embeddings)
                     print(f"State shape after embedding: {state.shape}")
                     
@@ -1130,81 +1130,14 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         redis_client.set(f"{agent_id}_new_epoch", 1)
 
                     else:
-                        tokens = compute_token()
-                    print(f"Tokens: {tokens}")
-                    state, embeddings = add_embedding(state, tokens, embeddings)
-                    print(f"State shape after embedding: {state.shape}")
-                    
-                    r_batch.append(reward)
-                
-                # Compute reward (if not already handled)
-                # reward = compute_reward(msg, bit_rate, last_bit_rate)
-                
-                # 6d) Decide on an action based on current policy and send back
-                action_prob = actor.predict(np.reshape(state, (1, S_INFO+EMBEDDING_SIZE, S_LEN)))  # Adjusted for embedding size
-                if np.isnan(action_prob[0, 0]) and agent_id == 0:
-                    print(epoch)
-                    print(state, "state")
-                    print(action_prob, "action prob")
-                    import pdb
-                    pdb.set_trace()
-                action_cumsum = np.cumsum(action_prob)
-                bit_rate = (
-                    action_cumsum
-                    > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)
-                ).argmax()
-
-                entropy_record.append(a3c.compute_entropy(action_prob[0]))
-
-                # Check if it's time to send experiences to the central agent
-                end_of_video = redis_client.get(f"{agent_id}_stop_flag")
-                if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
-                    exp_queue.put([
-                        s_batch[1:],  # ignore the first chunk
-                        a_batch[1:],  # since we don't have control over it
-                        r_batch[1:],  # control over it
-                        end_of_video,
-                        {'entropy': entropy_record}
-                    ])
-                    print(f"[Agent {agent_id}] Sent experience to central agent.")
-
-                    # Synchronize network parameters from the coordinator
-                    actor_net_params, critic_net_params = net_params_queue.get()
-                    actor.set_network_params(actor_net_params)
-                    critic.set_network_params(critic_net_params)
-
-                    # Reset batches
-                    del s_batch[:]
-                    del a_batch[:]
-                    del r_batch[:]
-                    del entropy_record[:]
-
-                # Store the state and action into batches
-                if end_of_video and int(end_of_video) == 1:
-                    last_bit_rate = DEFAULT_QUALITY
-                    bit_rate = DEFAULT_QUALITY  # Use the default action here
-                    action_vec = np.zeros(A_DIM)
-                    action_vec[bit_rate] = 1
-                    s_batch.append(np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN)))  # Adjusted for embedding
-                    a_batch.append(action_vec)
-                    tokens = np.array([])
-                    embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
-                    epoch += 1
-
-                    # Reset virtual browser
-                    print(f"[Agent {agent_id}] Resetting virtual browser.")
-                    redis_client.flushdb()
-                    redis_client.set("browser_active", 0)
-                    redis_client.set("new_epoch", 1)
-                else:
-                    s_batch.append(state)
-                    action_vec = np.zeros(A_DIM)
-                    action_vec[bit_rate] = 1
-                    a_batch.append(action_vec)
+                        s_batch.append(state)
+                        action_vec = np.zeros(A_DIM)
+                        action_vec[selection] = 1
+                        #print(action_vec)
+                        a_batch.append(action_vec)
             else:
                 time.sleep(10)
 
-        # Wait for the environment to finish
         # Wait for the environment to finish
         mm_proc.wait()
         # No token_proc in single-process approach
