@@ -362,11 +362,19 @@ class Pensieve():
                     # print(f"s_batch shape: {np.squeeze(np.stack(s_batch, axis=0), axis=1).shape}")
                     # print(f"a_batch shape: {np.vstack(a_batch).shape}")
                     # print(f"r_batch shape: {np.vstack(r_batch).shape}")
+                    s_batch = np.stack(s_batch, axis=0)
+                    if s_batch.shape[1] == 1:
+                        s_batch = np.squeeze(s_batch, axis=1)
+                    r_batch = np.vstack(r_batch)
+                    a_batch = np.vstack(a_batch)
+                    print("s_batch shape: ", s_batch.shape)
+                    print("a_batch shape: ", a_batch.shape)
+                    print("r_batch shape: ", r_batch.shape)
                     actor_gradient, critic_gradient, td_batch = \
                         a3c.compute_gradients(
-                            s_batch=np.squeeze(np.stack(s_batch, axis=0), axis=1),
-                            a_batch=np.vstack(a_batch),
-                            r_batch=np.vstack(r_batch),
+                            s_batch=s_batch,
+                            a_batch=a_batch,
+                            r_batch=r_batch,
                             terminal=terminal, actor=actor,
                             critic=critic,
                             entropy_weight=entropy_weight)
@@ -985,7 +993,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
         s_batch = [np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN))]
         a_batch = [action_vec]
-        r_batch = []
+        r_batch = [0]
         entropy_record = []
         tokens = np.array([])
         embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
