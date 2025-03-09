@@ -221,11 +221,6 @@ def main():
         import traceback
         print(traceback.format_exc())
         print("Training failed: {}".format(e))
-    finally:
-        # 5) When training is done or fails, kill the video_server process
-        print("Terminating video server ...")
-        video_server_proc.terminate()
-        video_server_proc.wait()
 
 
 if __name__ == "__main__":
