@@ -125,3 +125,5 @@ lib*
 pyvenv.cfg
 fig_reproduce/data/synthetic_test_plus_mahimahi
 fig_reproduce/model/tmp
+fig_reproduce/model/checkpoint
+*.png

@@ -34,6 +34,7 @@ up_pkt_loss=0
 down_pkt_loss=0
 buf_th=60
 trace_files=`ls ${TRACE_DIR}`
+echo -e "model_checkpoint_path: $1\n all_model_checkpoint_paths: $1" > ~/Genet/fig_reproduce/model/checkpoint
 #for buf_th in $(jq -r -c '.buffer_threshold.values[]' ${CONFIG_FILE}); do
  #   for delay in $(jq -r -c '.delay.values[]' ${CONFIG_FILE}); do
   #      for up_pkt_loss in $(jq -r -c '.uplink_packet_loss_rate.values[]' ${CONFIG_FILE}); do
