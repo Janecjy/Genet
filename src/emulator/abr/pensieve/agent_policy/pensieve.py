@@ -1110,7 +1110,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     # print(f"[Agent {agent_id}] check to send experience to central agent, r_batch size {len(r_batch)}, TRAIN_SEQ_LEN {TRAIN_SEQ_LEN}, end_of_video {end_of_video}.")
                     # print(len(r_batch), TRAIN_SEQ_LEN, end_of_video)
                     # end_of_video = redis_client.get(f"{agent_id}_stop_flag")
-                    # agent_logger.info(f"[Agent {agent_id}] end_of_video check 1: {end_of_video}")
+                agent_logger.info(f"[Agent {agent_id}] end_of_video check 1: {end_of_video}")
                 if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
                     exp_queue.put([s_batch[1:],  # ignore the first chuck
                                 a_batch[1:],  # since we don't have the
@@ -1136,6 +1136,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         # so that in the log we know where video ends
 
                 # store the state and action into batches
+                end_of_video = redis_client.get(f"{agent_id}_stop_flag")
                 agent_logger.info(f"[Agent {agent_id}] end_of_video check 2: {end_of_video}")
                 if end_of_video and int(end_of_video) == 1:
                     last_bit_rate = DEFAULT_QUALITY
