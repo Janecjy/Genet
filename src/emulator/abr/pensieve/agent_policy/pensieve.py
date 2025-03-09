@@ -1147,6 +1147,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     action_vec[selection] = 1
                     s_batch.append(np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN)))
                     a_batch.append(action_vec)
+                    r_batch.append(0)
                     tokens = np.array([])
                     embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
                     epoch += 1
@@ -1167,6 +1168,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     action_vec[selection] = 1
                     #print(action_vec)
                     a_batch.append(action_vec)
+                    # r_batch.append(reward)
             else:
                 # browser inactive
                 time.sleep(10)
