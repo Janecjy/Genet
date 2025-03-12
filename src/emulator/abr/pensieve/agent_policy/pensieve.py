@@ -919,6 +919,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
     # 3) Create redis for state/action communication
     redis_client = redis.Redis(host="10.10.1.1", port=2666, decode_responses=True)
     redis_client.set(f"{agent_id}_action_flag", int(False))
+    # redis_client.set(f"{agent_id}_stop_flag", int(False))
 
     with tf.compat.v1.Session() as sess:
         original_actor = OriginalActorNetwork(sess,
@@ -951,7 +952,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
         s_batch = [np.zeros(EMBEDDING_SIZE+1)]
         a_batch = [action_vec]
-        r_batch = [0]
+        r_batch = []
         entropy_record = []
         tokens = np.array([])
         embeddings = np.zeros((EMBEDDING_SIZE), dtype=np.float32)
@@ -987,7 +988,6 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
             agent_logger.info(f"Browser active: {browser_active}")
             if browser_active and int(browser_active) == 1:
                 # Set action and flag in Redis
-                # Set action and flag in Redis
                 redis_pipe = redis_client.pipeline(transaction=True)
                 redis_pipe.set(f"{agent_id}_action", str(bit_rate))
                 redis_pipe.set(f"{agent_id}_action_flag", int(True))
@@ -998,8 +998,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     agent_logger.info(f"redis_pipe Exception {e}")
                 # read from redis
                 recv_state = False
-                end_of_video = False
-                while not recv_state and not end_of_video:
+                while not recv_state:
                     redis_pipe = redis_client.pipeline(transaction=True)
                     redis_pipe.get(f"{agent_id}_state")
                     redis_pipe.get(f"{agent_id}_reward")
@@ -1011,7 +1010,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         agent_logger.info(f"redis_pipe Exception {e}")
                     #print(f"Retval {retval}")
                     if retval[2] is not None:
-                        if int(retval[2]):
+                        if int(retval[2]) == 1:
                             agent_logger.info(f"[Agent {agent_id}] Received state flag: {retval[2]}")
                             redis_client.set(f"{agent_id}_state_flag", int(False))
                             state = json.loads(retval[0])
@@ -1019,10 +1018,13 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                             reward = float(retval[1])
                             # print(f"[Agent {agent_id}] Received state: {state}.")
                             recv_state = True
+                            agent_logger.info(f"[Agent {agent_id}] Received state flag: {redis_client.get(f'{agent_id}_state_flag')}")
                     end_of_video = redis_client.get(f"{agent_id}_stop_flag")
                     if end_of_video and int(end_of_video) == 1:
                         agent_logger.info(f"[Agent {agent_id}] end_of_video received: {end_of_video}")
+                        recv_state = True
 
+                agent_logger.info(f"[Agent {agent_id}] recv_state: {recv_state}, end_of_video: {end_of_video}")
                 # If state received, process it
                 if recv_state:
                     state = np.array(state)
@@ -1054,17 +1056,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     adaptor_input = np.concatenate((np.array([original_bit_rate]), embeddings), axis=0)
                     print(f"adaptor_input shape: {adaptor_input.shape}")                    
                     r_batch.append(reward)
-                # time_stamp += delay  # in ms
-                # time_stamp += sleep_time  # in ms  
 
-                # -- linear reward --
-                # reward is video quality - rebuffer penalty - smoothness
-                # reward = linear_reward(VIDEO_BIT_RATE[bit_rate], 
-                #                     VIDEO_BIT_RATE[last_bit_rate], rebuf)
-
-                # 6d) Decide on an action (bit_rate) based on current policy and send bit_rate back
-                    # compute action probability vector
-                    # action_prob = actor.predict(adaptor_input)
                     action_prob = actor.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
                     if np.isnan(action_prob[0, 0]) and agent_id == 0:
                         print(epoch)
@@ -1078,69 +1070,67 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     bit_rate = calculate_from_selection(selection, original_bit_rate)
                     entropy_record.append(a3c.compute_entropy(action_prob[0]))
 
-                    # report experience to the coordinator
-                    # print(f"[Agent {agent_id}] check to send experience to central agent, r_batch size {len(r_batch)}, TRAIN_SEQ_LEN {TRAIN_SEQ_LEN}, end_of_video {end_of_video}.")
-                    # print(len(r_batch), TRAIN_SEQ_LEN, end_of_video)
-                    # end_of_video = redis_client.get(f"{agent_id}_stop_flag")
-                agent_logger.info(f"[Agent {agent_id}] end_of_video check 1: {end_of_video}")
-                if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
-                    exp_queue.put([s_batch[1:],  # ignore the first chuck
-                                a_batch[1:],  # since we don't have the
-                                r_batch[1:],  # control over it
-                                end_of_video,
-                                {'entropy': entropy_record}])
-                    agent_logger.info(f"[Agent {agent_id}] sent experience to central agent.")
-                    print(f"[Agent {agent_id}] sent experience to central agent.")
-                    # print("s_batch shape: ", s_batch.shape)
-                    # print("sent state shape: ", s_batch[1:].shape)
+                    end_of_video = redis_client.get(f"{agent_id}_stop_flag")
+                    agent_logger.info(f"[Agent {agent_id}] end_of_video check 1: {end_of_video}")
+                    if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
+                        exp_queue.put([s_batch[1:],  # ignore the first chuck
+                                    a_batch[1:],  # since we don't have the
+                                    r_batch[1:],  # control over it
+                                    end_of_video,
+                                    {'entropy': entropy_record}])
+                        agent_logger.info(f"[Agent {agent_id}] sent experience to central agent.")
+                        print(f"[Agent {agent_id}] sent experience to central agent.")
+                        # print("s_batch shape: ", s_batch.shape)
+                        # print("sent state shape: ", s_batch[1:].shape)
 
-                    # synchronize the network parameters from the coordinator
-                    actor_net_params, critic_net_params = net_params_queue.get()
-                    actor.set_network_params(actor_net_params)
-                    critic.set_network_params(critic_net_params)
+                        # synchronize the network parameters from the coordinator
+                        actor_net_params, critic_net_params = net_params_queue.get()
+                        actor.set_network_params(actor_net_params)
+                        critic.set_network_params(critic_net_params)
 
-                    # Reset batches
-                    del s_batch[:]
-                    del a_batch[:]
-                    del r_batch[:]
-                    del entropy_record[:]
+                        # Reset batches
+                        del s_batch[:]
+                        del a_batch[:]
+                        del r_batch[:]
+                        del entropy_record[:]
 
-                        # so that in the log we know where video ends
+                            # so that in the log we know where video ends
 
-                # store the state and action into batches
-                end_of_video = redis_client.get(f"{agent_id}_stop_flag")
-                agent_logger.info(f"[Agent {agent_id}] end_of_video check 2: {end_of_video}")
-                if end_of_video and int(end_of_video) == 1:
-                    last_bit_rate = DEFAULT_QUALITY
-                    bit_rate = DEFAULT_QUALITY  # use the default action here
-                    #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
-                    action_vec = np.zeros(A_DIM)
-                    selection = 0
-                    action_vec[selection] = 1
-                    s_batch.append(np.zeros(EMBEDDING_SIZE+1))
-                    a_batch.append(action_vec)
-                    r_batch.append(0)
-                    tokens = np.array([])
-                    embeddings = np.zeros((EMBEDDING_SIZE), dtype=np.float32)
-                    epoch += 1
-                    # reset virtual browser
-                    agent_logger.info(f"[Agent {agent_id}] Resetting virtual browser.")
-                    print(f"[Agent {agent_id}] Resetting virtual browser.")
-                    # redis_client.flushdb() # Wrong, should only reset the agent's state
-                    # only flush the agent's state
-                    for key in redis_client.scan_iter(f"{agent_id}_*"):
-                        redis_client.delete(key)
-                    agent_logger.info(redis_client.keys(f"{agent_id}_*"))
-                    redis_client.set(f"{agent_id}_browser_active", 0)
-                    redis_client.set(f"{agent_id}_new_epoch", 1)
+                    # store the state and action into batches
+                    end_of_video = redis_client.get(f"{agent_id}_stop_flag")
+                    agent_logger.info(f"[Agent {agent_id}] end_of_video check 2: {end_of_video}")
+                    if end_of_video and int(end_of_video) == 1:
+                        last_bit_rate = DEFAULT_QUALITY
+                        bit_rate = DEFAULT_QUALITY  # use the default action here
+                        #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
+                        action_vec = np.zeros(A_DIM)
+                        selection = 0
+                        action_vec[selection] = 1
+                        s_batch.append(np.zeros(EMBEDDING_SIZE+1))
+                        a_batch.append(action_vec)
+                        # r_batch.append(0)
+                        tokens = np.array([])
+                        embeddings = np.zeros((EMBEDDING_SIZE), dtype=np.float32)
+                        epoch += 1
+                        # reset virtual browser
+                        agent_logger.info(f"[Agent {agent_id}] Resetting virtual browser.")
+                        print(f"[Agent {agent_id}] Resetting virtual browser.")
+                        # redis_client.flushdb() # Wrong, should only reset the agent's state
+                        # only flush the agent's state
+                        for key in redis_client.scan_iter(f"{agent_id}_*"):
+                            redis_client.delete(key)
+                        agent_logger.info(redis_client.keys(f"{agent_id}_*"))
+                        redis_client.set(f"{agent_id}_browser_active", 0)
+                        redis_client.set(f"{agent_id}_new_epoch", 1)
+                        redis_client.set(f"{agent_id}_stop_flag", int(False))
 
-                else:
-                    s_batch.append(adaptor_input)
-                    action_vec = np.zeros(A_DIM)
-                    action_vec[selection] = 1
-                    #print(action_vec)
-                    a_batch.append(action_vec)
-                    # r_batch.append(reward)
+                    else:
+                        s_batch.append(adaptor_input)
+                        action_vec = np.zeros(A_DIM)
+                        action_vec[selection] = 1
+                        #print(action_vec)
+                        a_batch.append(action_vec)
+                        # r_batch.append(reward)
             else:
                 # browser inactive
                 time.sleep(10)

@@ -191,8 +191,8 @@ def make_request_handler(server_states):
                 
                 state_msg = self.server_states['state'].tolist()
                 # print("Test sfas ")
-                print(f"redis pipe get {self.redis_client.get(f'{self.agent_id}_action_flag')}")
-                self.logger.info(f"redis pipe get {self.redis_client.get(f'{self.agent_id}_action_flag')}")
+                print(f"redis pipe get {self.redis_client.get(f'{self.agent_id}_state_flag')}")
+                self.logger.info(f"redis pipe get {self.redis_client.get(f'{self.agent_id}_state_flag')}")
                 # print (f"Server State {state_msg}")
                 # print("Pipe Set")
                 redis_pipe = self.redis_client.pipeline(transaction=True)
