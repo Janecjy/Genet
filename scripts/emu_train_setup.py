@@ -130,9 +130,6 @@ def setup_server(server_config, server_index):
 
         # Install Python dependencies inside Conda
         "source ~/miniconda/bin/activate genet_env && pip install numpy tensorflow==1.15.0 selenium pyvirtualdisplay numba torch tflearn xvfbwrapper matplotlib redis scipy pandas"
-
-        "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
-        "sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install ./google-chrome-stable_current_amd64.deb"
     ]
     
     # Redis configuration using the dynamically assigned IP
@@ -149,7 +146,7 @@ def setup_server(server_config, server_index):
     #         # Add ddebs repository with correct evaluation of `lsb_release -cs`
             
     #     setup_commands.extend(bpftrace_commands)
-    scp_file(server)
+    # scp_file(server)
 
     # Run setup commands
     run_remote_commands(server, setup_commands)

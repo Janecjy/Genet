@@ -53,7 +53,8 @@ def run_remote_commands(server, commands):
 def train_server(server_config, index):
     """Execute the training sequence on the remote server."""
     server = server_config["hostname"]
-    redis_ip = f"10.10.1.{index + 1}"
+    redis_ip = server_config["redis_ip"]
+    # redis_ip = f"10.10.1.{index + 1}"
     emulation_seed = 10 * (index + 1)
     log_filename = f"/mydata/logs/emu_{emulation_seed}.out"
 
@@ -67,24 +68,24 @@ def train_server(server_config, index):
 
         # 3) Check out network-state branch and pull
         # "cd ~/Genet && git checkout network-state && git pull",
-        "cd ~/Genet && git reset --hard && git pull",
+        "cd ~/Genet"# && git reset --hard && git pull",
 
         # 4) Create a single main tmux session in detached mode
         "tmux new-session -d -s main 'bash'",
 
         # 5) In the main session, create a new window for Redis
-        # "tmux new-window -t main -n redis_window",
+        "tmux new-window -t main -n redis_window",
 
         # Send the Redis command to that window
-        # f"tmux send-keys -t main:redis_window 'redis-server --port {REDIS_PORT} --bind {redis_ip} --protected-mode no' C-m",
+        f"tmux send-keys -t main:redis_window 'redis-server --port {REDIS_PORT} --bind {redis_ip} --protected-mode no' C-m",
 
         # Wait a bit, then verify Redis is running
-        # "sleep 3",
-        # "tmux send-keys -t main:redis_window 'ps aux | grep redis-server' C-m",
+        "sleep 3",
+        "tmux send-keys -t main:redis_window 'ps aux | grep redis-server' C-m",
 
         # 6) In the main session, create a new window for bpftrace
-        # "tmux new-window -t main -n bpftrace_window",
-        # "tmux send-keys -t main:bpftrace_window "
+        "tmux new-window -t main -n bpftrace_window",
+        "tmux send-keys -t main:bpftrace_window "
         # "'cd ~/Genet/src/emulator/abr/pensieve/virtual_browser/ && sudo bpftrace check.bt > bpftrace_output.txt' C-m",
 
         # 7) Replace any '10.10.1.1' with redis_ip in .py files only
@@ -95,16 +96,16 @@ def train_server(server_config, index):
 
         # Activate conda env, then run the training script in training_window
         f"tmux send-keys -t main:training_window "
-        f"'source ~/miniconda/bin/activate genet_env && cd ~/Genet && "
+        f"'source ~/miniconda/bin/activate genet_env && cd ~/Genet; "
         f"src/drivers/abr/train_udr3_emu_par.sh --mode emulation --emulation-seed {emulation_seed} "
         f"2>&1 | tee {log_filename}' C-m",
 
         # Optionally list the tmux sessions so we can confirm they've all been created
         "tmux ls"
     ]
-
-    run_remote_commands(server, commands)
-    print(f"Training sequence started on {server} (seed={emulation_seed}).")
+    if server_config["run"]:
+        run_remote_commands(server, commands)
+        print(f"Training sequence started on {server} (seed={emulation_seed}).")
 
 if __name__ == "__main__":
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(servers)) as executor:

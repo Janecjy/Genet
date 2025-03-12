@@ -2,19 +2,59 @@ servers:
   - hostname: c220g1-031126.wisc.cloudlab.us
     branch: network-state
     redis: true
+    run: true
+    redis_ip: 10.10.1.1
 
   - hostname: c220g1-031122.wisc.cloudlab.us
     branch: network-state
     redis: true
+    run: false
+    redis_ip: 10.10.1.2
 
   - hostname: c220g1-031114.wisc.cloudlab.us
     branch: network-state
     redis: true
+    run: false
+    redis_ip: 10.10.1.3
 
   - hostname: c220g1-031116.wisc.cloudlab.us
     branch: network-state
     redis: true
+    run: false
+    redis_ip: 10.10.1.4
 
   - hostname: c220g1-031115.wisc.cloudlab.us
     branch: network-state
     redis: true
+    run: false
+    redis_ip: 10.10.1.5
+
+  - hostname: c220g5-110914.wisc.cloudlab.us 
+    branch: network-state
+    redis: true
+    run: false
+    redis_ip: 10.10.1.1
+
+  - hostname: c240g5-110213.wisc.cloudlab.us
+    branch: network-state
+    redis: true
+    run: false
+    redis_ip: 10.10.1.2
+
+  - hostname: c240g5-110211.wisc.cloudlab.us
+    branch: network-state
+    redis: true
+    run: false
+    redis_ip: 10.10.1.3
+
+  - hostname: c220g5-120115.wisc.cloudlab.us
+    branch: network-state
+    redis: true
+    run: false
+    redis_ip: 10.10.1.4
+
+  - hostname: c220g5-110427.wisc.cloudlab.us
+    branch: network-state
+    redis: true
+    run: false
+    redis_ip: 10.10.1.5
