@@ -1030,9 +1030,11 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                 if recv_state:
                     state = np.array(state)
                     
-                    # Get original actor model action
-                    original_hidden = original_actor.get_hidden( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
-                    
+                    original_hidden = original_actor.get_hidden(np.reshape(state, (1, S_INFO, S_LEN)))
+
+                    # Flatten the hidden state output
+                    original_hidden_flat = original_hidden.flatten()  # Converts (1, 128) -> (128,)
+
                     agent_logger.info(f"Original action: {original_hidden.shape}")
                     print(f"State shape before embedding: {state.shape}")
                     
@@ -1047,10 +1049,16 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     # print(f"Tokens: {tokens}")
                     embeddings = calculate_embedding(state, tokens, embeddings)
                     print(f"Embedding shape: {embeddings.shape}")
+                    
+                    # Flatten embeddings if necessary
+                    embeddings_flat = embeddings.flatten()  # Converts (16,) -> (16,)
+
+                    # Now concatenate both 1D arrays
+                    
                     # print(f"original_bit_rate type: {type(original_bit_rate)}, shape: {np.shape(original_bit_rate)}")
                     print(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
-
-                    adaptor_input = np.concatenate((np.array([original_hidden]), embeddings), axis=0)
+                    adaptor_input = np.concatenate((original_hidden_flat, embeddings_flat))  # Shape: (128 + 16,) -> (144,)
+                    # adaptor_input = np.concatenate((np.array([original_hidden]), embeddings), axis=0)
                     print(f"adaptor_input shape: {adaptor_input.shape}")                    
                     r_batch.append(reward)
 
