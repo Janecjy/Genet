@@ -127,3 +127,5 @@ fig_reproduce/data/synthetic_test_plus_mahimahi
 fig_reproduce/model/tmp
 fig_reproduce/model/checkpoint
 *.png
+fig_reproduce/model/*
+fig_reproduce/data/*
