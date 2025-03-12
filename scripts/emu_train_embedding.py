@@ -56,6 +56,7 @@ def train_server(server_config, index):
     redis_ip = server_config["redis_ip"]
     # redis_ip = f"10.10.1.{index + 1}"
     emulation_seed = 10 * (index + 1)
+    branch = server_config["branch"]
     log_filename = f"/mydata/logs/emu_{emulation_seed}.out"
 
     commands = [
@@ -68,7 +69,10 @@ def train_server(server_config, index):
 
         # 3) Check out network-state branch and pull
         # "cd ~/Genet && git checkout network-state && git pull",
-        "cd ~/Genet"# && git reset --hard && git pull",
+        f"cd ~/Genet && git reset --hard && git fetch && git checkout {branch} && git pull",
+        
+        # 7) Replace any '10.10.1.1' with redis_ip in .py files only
+        f"grep -rl --include='*.py' '10.10.1.1' ~/Genet/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.1/{redis_ip}/g' || true",
 
         # 4) Create a single main tmux session in detached mode
         "tmux new-session -d -s main 'bash'",
@@ -84,12 +88,9 @@ def train_server(server_config, index):
         "tmux send-keys -t main:redis_window 'ps aux | grep redis-server' C-m",
 
         # 6) In the main session, create a new window for bpftrace
-        "tmux new-window -t main -n bpftrace_window",
-        "tmux send-keys -t main:bpftrace_window "
+        # "tmux new-window -t main -n bpftrace_window",
+        # "tmux send-keys -t main:bpftrace_window ",
         # "'cd ~/Genet/src/emulator/abr/pensieve/virtual_browser/ && sudo bpftrace check.bt > bpftrace_output.txt' C-m",
-
-        # 7) Replace any '10.10.1.1' with redis_ip in .py files only
-        f"grep -rl --include='*.py' '10.10.1.1' ~/Genet/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.1/{redis_ip}/g' || true",
 
         # 8) In the main session, create a training window
         "tmux new-window -t main -n training_window",
