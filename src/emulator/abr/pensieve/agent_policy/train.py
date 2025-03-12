@@ -96,6 +96,12 @@ def parse_args():
         default="",
         help="A directory contains the training trace files.",
     )
+    parser.add_argument(
+        "--original-model-path",
+        type=str,
+        default="",
+        help="Path to a pretrained Pensieve checkpoint.",
+    )
     subparsers = parser.add_subparsers(dest="curriculum", help="CL parsers.")
     udr_parser = subparsers.add_parser("udr", help="udr")
     udr_parser.add_argument(
@@ -216,7 +222,8 @@ def main():
         pensieve.train(train_envs=train_envs,
                        iters=args.total_epoch,
                        save_dir=args.save_dir,
-                       use_replay_buffer=False)
+                       use_replay_buffer=False,
+                       original_actor_path=args.original_model_path,)
     except Exception as e:
         import traceback
         print(traceback.format_exc())

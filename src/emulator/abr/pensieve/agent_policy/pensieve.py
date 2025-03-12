@@ -24,6 +24,7 @@ sys.path.append("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy")
 print("Pensieve sys path: ", sys.path)
 from emulator.abr.pensieve import a3c
 from emulator.abr.pensieve.utils import linear_reward
+from emulator.abr.pensieve.a3c.a3c_jump import ActorNetwork as OriginalActorNetwork
 from models import *
 # from .models import create_mask
 from models import *
@@ -129,42 +130,6 @@ class TCPStatsAggregator:
         return stats
 
 
-AGGREGATION_WINDOW_MS = 80 
-WINDOW = 10
-
-class TCPStatsAggregator:
-    def __init__(self):
-        self.window_data = defaultdict(list)
-        self.window_start_time = None
-        
-    def aggregate_window_data(self):
-        # if not self.window_data:
-        #     return None
-            
-        stats = {}
-        
-        print(len(self.window_data['srtt_us']))
-        rtts = [float(x) / 100000.0 / 8  for x in self.window_data['srtt_us']]
-        stats['rtt_ms'] = np.mean(rtts) if rtts else 0
-        
-        rttvars = [float(x) / 1000.0 for x in self.window_data['rttvar']]
-        stats['rttvar_ms'] = np.mean(rttvars) if rttvars else 0
-
-        cwnd_rate = [float(x) for x in self.window_data['cwnd_rate']]
-        stats['cwnd_rate'] = np.mean(cwnd_rate) if cwnd_rate else 0
-
-        l_w_mbps = [float(x) * 8.0 for x in self.window_data['l_w_mbps']]
-        stats['l_w_mbps'] = np.mean(l_w_mbps) if cwnd_rate else 0
-
-        delivery_rate = [float(x) / 125000.0 / 100 for x in self.window_data['delivery_rate']]
-        stats['delivery_rate'] = np.mean(delivery_rate) if cwnd_rate else 0
-        
-        stats['window_start'] = self.window_start_time
-        stats['num_packets'] = len(rtts)
-        
-        return stats
-
-
 class Pensieve():
     """Pensieve Implementation.
 
@@ -221,7 +186,7 @@ class Pensieve():
         )
 
 
-    def train(self, train_envs, save_dir, iters=1e5, use_replay_buffer=False):
+    def train(self, train_envs, save_dir, iters=1e5, use_replay_buffer=False, original_actor_path=None):
         """
         train_envs: list of env configs, each is a dict like
             {"trace_file": "path/to/trace", "delay": 20}
@@ -262,7 +227,8 @@ class Pensieve():
                     self.batch_size,
                     self.randomization,
                     self.randomization_interval,
-                    self.num_agents
+                    self.num_agents,
+                    original_actor_path
                 )
             ))
             # agents.append(mp.Process(
@@ -283,12 +249,12 @@ class Pensieve():
                  'rewards_median', 'rewards_95per', 'rewards_max'])
 
             actor = a3c.ActorNetwork(sess,
-                                     state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
+                                     state_dim=EMBEDDING_SIZE+1,
                                      action_dim=A_DIM,
                                      bitrate_dim=BITRATE_DIM)
                                      # learning_rate=args.ACTOR_LR_RATE)
             critic = a3c.CriticNetwork(sess,
-                                       state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
+                                       state_dim=EMBEDDING_SIZE+1,
                                        learning_rate=CRITIC_LR_RATE,
                                        bitrate_dim=BITRATE_DIM)
 
@@ -410,9 +376,9 @@ class Pensieve():
                 avg_entropy = total_entropy / total_batch_len
 
                 self.train_logger.info('Epoch: ' + str(epoch) +
-                             ' TD_loss: ' + str(avg_td_loss) +
-                             ' Avg_reward: ' + str(avg_reward) +
-                             ' Avg_entropy: ' + str(avg_entropy))
+                            ' TD_loss: ' + str(avg_td_loss) +
+                            ' Avg_reward: ' + str(avg_reward) +
+                            ' Avg_entropy: ' + str(avg_entropy))
                 log_writer.writerow([epoch, avg_td_loss, avg_reward, avg_entropy])
 
                 # summary_str = sess.run(summary_ops, feed_dict={
@@ -490,8 +456,8 @@ class Pensieve():
                 end_t = time.time()
                 # print(f'epoch{epoch-1}: {end_t - start_t}s')
 
-        for tmp_agent in agents:
-            tmp_agent.terminate()
+            for tmp_agent in agents:
+                tmp_agent.terminate()
 
 
     def calculate_from_selection(self, selected ,last_bit_rate):
@@ -856,7 +822,7 @@ def compute_token(bpftrace_path):
 
 transformer = torch.load("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/Checkpoint-Combined_10RTT_6col_Transformer3_64_5_5_16_4_lr_1e-05-999iter.p", map_location='cpu')
 transformer.eval()
-def add_embedding(state, tokens, embeddings):
+def calculate_embedding(state, tokens, embedding):
     """
     Appends the Transformer embedding of tokens to the state.
     
@@ -879,11 +845,7 @@ def add_embedding(state, tokens, embeddings):
         print("Not enough tokens to compute embedding. Using zero embeddings.")
         # if state has 3 dimensions, squeeze
         print("Not enough tokens state shape before embedding:", state.shape)  # [6, 6]
-        if len(state.shape) == 3 and state.shape[1] == S_INFO:
-            updated_state = np.concatenate((state.squeeze(0), embeddings), axis=0)  # [6 + 64, 6] = [70, 6]
-        elif state.shape[0] == S_INFO:
-            updated_state = np.concatenate((state, embeddings), axis=0)
-        return updated_state, embeddings
+        return embedding
     
     # Convert tokens to NumPy array if not already
     tokens_np = np.array(tokens)  # Shape: [10, 6]
@@ -911,26 +873,12 @@ def add_embedding(state, tokens, embeddings):
         
         # Move to CPU and convert to NumPy
         embedding = embedding_tensor.squeeze(0).cpu().numpy().astype(np.float32)  # Shape: [64]
-        
-        # Shift embeddings to the left and insert the new embedding at the end
-        embeddings = np.roll(embeddings, -1, axis=1)  # Shift left along S_LEN axis
-        embeddings[:, -1] = embedding  # Insert new embedding
-        
-    # Concatenate embeddings to state
-    print("embedding shape: ", embeddings.shape)  # [64, 6]
-    print("add_embedding state shape before embedding:", state.shape)  # [6, 6]
-    if len(state.shape) == 3:
-        updated_state = np.concatenate((state.squeeze(0), embeddings), axis=0)  # [6 + 64, 6] = [70, 6]
-    else:
-        updated_state = np.concatenate((state, embeddings), axis=0)
-    print("state shape after embedding:", updated_state.shape)  # [70, 6]
-    
-    return updated_state, embeddings
 
+    return embedding
 
 def agent(agent_id, net_params_queue, exp_queue, train_envs,
           summary_dir, batch_size, randomization, randomization_interval,
-          num_agents):
+          num_agents, original_actor_path):
     """
     Each agent process picks an environment (delay, trace) from train_envs,
     starts a Mahimahi shell, runs the virtual_browser, collects data, etc.
@@ -973,9 +921,19 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
     redis_client.set(f"{agent_id}_action_flag", int(False))
 
     with tf.compat.v1.Session() as sess:
-        actor = a3c.ActorNetwork(sess, state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
+        original_actor = OriginalActorNetwork(sess,
+                                            state_dim=[S_INFO, S_LEN],
+                                            action_dim=A_DIM,
+                                            bitrate_dim=BITRATE_DIM)
+        sess.run(tf.global_variables_initializer())
+        original_saver = tf.train.Saver()
+        if original_actor_path is not None:
+            original_saver.restore(sess, original_actor_path)
+            print("Original model restored.")
+        
+        actor = a3c.ActorNetwork(sess, state_dim=EMBEDDING_SIZE+1,
                                  action_dim=A_DIM, bitrate_dim=BITRATE_DIM)
-        critic = a3c.CriticNetwork(sess, state_dim=[S_INFO+EMBEDDING_SIZE, S_LEN],
+        critic = a3c.CriticNetwork(sess, state_dim=EMBEDDING_SIZE+1,
                                   learning_rate=CRITIC_LR_RATE,
                                   bitrate_dim=BITRATE_DIM)
 
@@ -991,12 +949,13 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         action_vec = np.zeros(A_DIM)
         action_vec[selection] = 1
 
-        s_batch = [np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN))]
+        s_batch = [np.zeros(EMBEDDING_SIZE+1)]
         a_batch = [action_vec]
         r_batch = [0]
         entropy_record = []
         tokens = np.array([])
-        embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
+        embeddings = np.zeros((EMBEDDING_SIZE), dtype=np.float32)
+        agent_logger.info(f"Initial embeddings shape: {embeddings.shape}")
 
         time_stamp = 0
         epoch = 0
@@ -1067,6 +1026,15 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                 # If state received, process it
                 if recv_state:
                     state = np.array(state)
+                    
+                    # Get original actor model action
+                    original_action_prob = original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
+                    original_action_cumsum = np.cumsum( original_action_prob )
+                    original_selection = (original_action_cumsum > np.random.randint(
+                        1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
+                    original_bit_rate = calculate_from_selection( original_selection ,last_bit_rate )
+                    
+                    agent_logger.info(f"Original action: {original_bit_rate}")
                     print(f"State shape before embedding: {state.shape}")
                     
                     # Compute tokens and embed
@@ -1078,9 +1046,13 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         tokens = compute_token(bpftrace_out_path)
                     print(f"add_embedding1 state shape: {state.shape}")
                     # print(f"Tokens: {tokens}")
-                    state, embeddings = add_embedding(state, tokens, embeddings)
-                    print(f"State shape after embedding: {state.shape}")
-                    
+                    embeddings = calculate_embedding(state, tokens, embeddings)
+                    print(f"Embedding shape: {embeddings.shape}")
+                    print(f"original_bit_rate type: {type(original_bit_rate)}, shape: {np.shape(original_bit_rate)}")
+                    print(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
+
+                    adaptor_input = np.concatenate((np.array([original_bit_rate]), embeddings), axis=0)
+                    print(f"adaptor_input shape: {adaptor_input.shape}")                    
                     r_batch.append(reward)
                 # time_stamp += delay  # in ms
                 # time_stamp += sleep_time  # in ms  
@@ -1092,8 +1064,8 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
                 # 6d) Decide on an action (bit_rate) based on current policy and send bit_rate back
                     # compute action probability vector
-                    action_prob = actor.predict(np.reshape(
-                        state, (1, S_INFO+EMBEDDING_SIZE, S_LEN)))
+                    # action_prob = actor.predict(adaptor_input)
+                    action_prob = actor.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
                     if np.isnan(action_prob[0, 0]) and agent_id == 0:
                         print(epoch)
                         print(state, "state")
@@ -1103,7 +1075,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     action_cumsum = np.cumsum(action_prob)
                     selection = (action_cumsum > np.random.randint(
                         1, RAND_RANGE) / float(RAND_RANGE)).argmax()
-                    bit_rate = calculate_from_selection(selection, last_bit_rate)
+                    bit_rate = calculate_from_selection(selection, original_bit_rate)
                     entropy_record.append(a3c.compute_entropy(action_prob[0]))
 
                     # report experience to the coordinator
@@ -1145,11 +1117,11 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     action_vec = np.zeros(A_DIM)
                     selection = 0
                     action_vec[selection] = 1
-                    s_batch.append(np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN)))
+                    s_batch.append(np.zeros(EMBEDDING_SIZE+1))
                     a_batch.append(action_vec)
                     r_batch.append(0)
                     tokens = np.array([])
-                    embeddings = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
+                    embeddings = np.zeros((EMBEDDING_SIZE), dtype=np.float32)
                     epoch += 1
                     # reset virtual browser
                     agent_logger.info(f"[Agent {agent_id}] Resetting virtual browser.")
@@ -1163,7 +1135,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     redis_client.set(f"{agent_id}_new_epoch", 1)
 
                 else:
-                    s_batch.append(state)
+                    s_batch.append(adaptor_input)
                     action_vec = np.zeros(A_DIM)
                     action_vec[selection] = 1
                     #print(action_vec)

@@ -19,6 +19,7 @@ val_trace_dir=data/abr/val_FCC
 total_epoch=75000
 train_name=udr3_emu_par
 config_file=config/abr/${train_name}.json
+original_model_path=fig_reproduce/data/all_models/udr_3/nn_model_ep_58000.ckpt
 
 # Default mode
 MODE="simulation"
@@ -70,6 +71,8 @@ elif [ "$MODE" = "emulation" ]; then
         --nagent 10 \
         --video-size-file-dir ${video_size_file_dir} \
         --model-save-interval 10 \
+        --original-model-path ${original_model_path} \
+        --jump-action \
         udr \
         --config-file ${config_file} \
         --val-trace-dir ${val_trace_dir}
