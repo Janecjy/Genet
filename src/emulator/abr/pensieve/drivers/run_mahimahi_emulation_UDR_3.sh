@@ -12,6 +12,7 @@ TRACE_DIR=$2
 SUMMARY_DIR_NAME=$3
 PORT_ID=$4
 AGENT_ID=$5
+EXTRA_ARG=$6
 #CONFIG_FILE=pensieve/config/emulation/param_sweep.json
 CONFIG_FILE=/users/janechen/Genet/config/abr/udr3_emu_par.json
 
@@ -41,7 +42,9 @@ up_pkt_loss=0
 down_pkt_loss=0
 buf_th=60
 trace_files=`ls ${TRACE_DIR}`
+
 echo -e "model_checkpoint_path: $1\n all_model_checkpoint_paths: $1" > ~/Genet/fig_reproduce/model/checkpoint
+
 #for buf_th in $(jq -r -c '.buffer_threshold.values[]' ${CONFIG_FILE}); do
  #   for delay in $(jq -r -c '.delay.values[]' ${CONFIG_FILE}); do
   #      for up_pkt_loss in $(jq -r -c '.uplink_packet_loss_rate.values[]' ${CONFIG_FILE}); do
@@ -51,7 +54,7 @@ echo -e "model_checkpoint_path: $1\n all_model_checkpoint_paths: $1" > ~/Genet/f
                     # echo "${buffer_threshold} ${delay} ${up_pkt_loss} ${down_pkt_loss} ${TRACE_FILE}"
                       mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
                       mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \
-                      bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port ${PORT_ID} --abr RL --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir pensieve/tests/UDR-3_${AGENT_ID}_${buf_th}_${delay}_${SUMMARY_DIR_NAME} --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322 --num-epochs=1 --run_time=0"
+                      bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port ${PORT_ID} --abr RL --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir pensieve/tests/${SUMMARY_DIR_NAME}/UDR-3_${AGENT_ID}_${buf_th}_${delay} --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322 --num-epochs=1 --run_time=0 ${EXTRA_ARG}"
 
 #                      mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
 #                      mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \

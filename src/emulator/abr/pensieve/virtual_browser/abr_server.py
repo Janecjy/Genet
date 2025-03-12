@@ -15,7 +15,7 @@ import redis
 import numpy as np
 import logging
 
-from pensieve.agent_policy import Pensieve, RobustMPC, BufferBased, FastMPC, RLTrain
+from pensieve.agent_policy import Pensieve, RobustMPC, BufferBased, FastMPC, RLTrain, rl_embedding
 from pensieve.a3c.a3c_jump import ActorNetwork
 
 from pensieve.constants import (
@@ -75,6 +75,8 @@ def make_request_handler(server_states):
             self.actor = server_states['actor']
             self.summary_dir = server_states['summary_dir']
             self.agent_id = server_states['agent_id'] #"0"#os.path.basename(self.summary_dir).split("_")[1]
+            self.embedding = server_states['embedding']
+            self.tokens = server_states['tokens']
     
             print("Agent ID {}".format(self.agent_id))
             # print("Redis keys {}".format(redis_client.keys()))
@@ -215,8 +217,18 @@ def make_request_handler(server_states):
                      self.server_states['future_bandwidth']])
 
                 if isinstance(self.abr, Pensieve):
+                    state = self.server_states['state']
+                    self.logger.info(f"Embedding {self.embedding}")
+                    use_embedding = False
+                    if self.embedding is not None and self.tokens is not None:
+                        use_embedding = True
+                        redis_pipe.set(f"{self.agent_id}_use_embedding", int(True))
+                        state, self.embedding, self.tokens =  rl_embedding.transform_state_and_add_embedding(self.agent_id, state, self.embedding, self.tokens)
+                        self.logger.info(f"Embedding transformed: {self.embedding}") 
+                    
                     bit_rate = self.abr.select_action(
-                        self.server_states['state'], last_bit_rate=self.server_states['last_bit_rate'])
+                       state, last_bit_rate=self.server_states['last_bit_rate'], use_embedding=use_embedding)
+                    
                 elif isinstance(self.abr, RobustMPC):
                     last_index = int(post_data['lastRequest'])
                     future_chunk_cnt = min(self.abr.mpc_future_chunk_cnt,
@@ -299,7 +311,7 @@ def make_request_handler(server_states):
     return Request_Handler
 
 def run_abr_server(abr, trace_file, summary_dir, actor_path,
-                   video_size_file_dir, ip='localhost', port=8333,):
+                   video_size_file_dir, ip='localhost', port=8333, embedding=None, tokens=None):
     print(f"Summary Directory {summary_dir}")
     os.makedirs(summary_dir, exist_ok=True)
     log_file_path = os.path.join(
@@ -309,7 +321,7 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
     with tf.Session() as sess ,open( log_file_path ,'wb' ) as log_file:
 
         actor = ActorNetwork( sess ,
-                              state_dim=[6 ,6] ,action_dim=3 ,
+                              state_dim=[rl_embedding.EMBEDDING_SIZE+S_INFO ,6] ,action_dim=3 ,
                               bitrate_dim=6)
 
         sess.run( tf.initialize_all_variables() )
@@ -363,6 +375,8 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
             'future_bandwidth': 0,
             'summary_dir': summary_dir,
             'agent_id': agent_id,
+            'embedding': embedding,
+            'tokens': tokens
             # <-- Add these two if you're controlling chunk step externally
             # 'chunk_req_queue': chunk_req_queue,
             # 'chunk_resp_queue': chunk_resp_queue,

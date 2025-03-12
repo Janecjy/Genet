@@ -126,3 +126,5 @@ pyvenv.cfg
 fig_reproduce/data/*
 fig_reproduce/model/*
 *.png
+fig_reproduce/model/*
+fig_reproduce/data/*

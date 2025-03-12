@@ -12,6 +12,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import redis
+from  pensieve.agent_policy import rl_embedding
+
 redis_client = redis.Redis(host="10.10.1.2", port=2666, decode_responses=True)
 
 from pensieve.virtual_browser.abr_server import run_abr_server
@@ -82,6 +84,8 @@ def parse_args():
                         help='Save model every N iterations')
     parser.add_argument('--num-epochs', type=int, default=100000,
                         help='Number of training epochs')
+    parser.add_argument('--use_embedding', action='store_true',
+                        help='Use embedding during action prediciton')   
     
     return parser.parse_args()
 
@@ -170,11 +174,16 @@ def main():
     port_number = args.port
     abr_algo = args.abr
     run_time = args.run_time
-
-    # Start bpftrace before ABR server
-    trace_output = "bpftrace_output.txt"
-    bpftrace_process = launch_bpftrace(trace_output)
-
+    embedding = None
+    tokens = None
+    if args.use_embedding:
+        embedding, tokens = rl_embedding.null_embedding_and_token()
+        video_server_proc, bpftrace_process = rl_embedding.launch_video_server_and_bftrace(agent_id, logger, run_video_server=False)
+    else:
+        # Start bpftrace before ABR server
+        trace_output = "bpftrace_output.txt"
+        bpftrace_process = launch_bpftrace(trace_output)
+    
     logger.info("Starting ABR server in inference mode...")
     logger.info(f"Summary dir: {args.summary_dir}")
 
@@ -188,7 +197,9 @@ def main():
             args.actor_path,
             args.video_size_file_dir,
             args.abr_server_ip,
-            args.abr_server_port
+            args.abr_server_port,
+            embedding,
+            tokens,
         )
     )
     abr_server_proc.start()
