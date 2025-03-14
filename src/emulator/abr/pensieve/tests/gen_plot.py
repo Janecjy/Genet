@@ -1,10 +1,15 @@
-from parse_test_result import reward_mean_std
+from parse_test_result import reward_mean_std, extract_reward
 import matplotlib.pyplot as plt
 
 def main():
-    model_directories = [("/users/janechen/Genet/src/emulator/abr/pensieve/tests/UDR-3_0_60_40_test_all_trace_summary", False),
-                         ("/users/janechen/Genet/fig_reproduce/sigcomm_artifact/synthetic/udr3_result", True)] #(result_path, if_simulation_result)
-    x = ['Emulator', 'Simulator']
+    model_directories = [("/mydata/results/UDR-3-orig/", False),
+                         ("/mydata/results/03_12_model_summary_subset/server_1_nn_model_ep_280/UDR-3_0_60_40/", False)]#,
+                        #  ("/mydata/results/03_12_model_summary_subset/server_2_nn_model_ep_280/UDR-3_0_60_40/", False),
+                        #  ("/mydata/results/03_12_model_summary_subset/server_3_nn_model_ep_280/UDR-3_0_60_40/", False),
+                        #  ("/mydata/results/03_12_model_summary_subset/server_4_nn_model_ep_280/UDR-3_0_60_40/", False),
+                        #  ("/mydata/results/03_12_model_summary_subset/server_5_nn_model_ep_280/UDR-3_0_60_40/", False),
+                        #  ("/mydata/results/03_12_model_summary_subset/server_10_nn_model_ep_130/UDR-3_0_60_40/", False)] #(result_path, if_simulation_result)
+    x = ['Pensieve', 'Pensieve-Unum-Action-Adaptor']#, 'Pensieve-20', 'Pensieve-30', 'Pensieve-40', 'Pensieve-50', 'Pensieve-Hidden']
     y = []
 
     plt.figure(figsize=(8, 6))
@@ -14,10 +19,18 @@ def main():
         mean, std, total_num = reward_mean_std(result_path, is_simulation)
         print(mean)
         y.append(mean)
-    
-    plt.bar(x, y)    
+       
+    plt.bar(
+        x,
+        y,
+        yerr=std,
+        capsize=5,               # length of the error bar caps
+        alpha=0.7,               # transparency for the bars
+        width=0.5,
+        error_kw=dict(ecolor='black', lw=2)  # style of error bars
+    )
     #plt.figure(figsize=(10, 6))
-    plt.xlabel("Model Name", fontsize=20)
+    # plt.xlabel("Model Name", fontsize=20)
     plt.ylabel("Mean Reward", fontsize=20)
     plt.xticks(fontsize=18)
     plt.yticks(fontsize=18)
