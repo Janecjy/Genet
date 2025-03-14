@@ -10,6 +10,7 @@ import math
 AGGREGATION_WINDOW_MS = 80 
 WINDOW = 10
 EMBEDDING_SIZE = 16
+HIDDEN_SIZE = 128
 S_LEN = 6 
 S_INFO = 6
 DEVICE = 'cpu'
@@ -206,11 +207,7 @@ def add_embedding(state, tokens, embeddings):
         print("Not enough tokens to compute embedding. Using zero embeddings.")
         # if state has 3 dimensions, squeeze
         print("Not enough tokens state shape before embedding:", state.shape)  # [6, 6]
-        if len(state.shape) == 3 and state.shape[1] == S_INFO:
-            updated_state = np.concatenate((state.squeeze(0), embeddings), axis=0)  # [6 + 64, 6] = [70, 6]
-        elif state.shape[0] == S_INFO:
-            updated_state = np.concatenate((state, embeddings), axis=0)
-        return updated_state, embeddings
+        return embeddings
     
     # Convert tokens to NumPy array if not already
     tokens_np = np.array(tokens)  # Shape: [10, 6]
@@ -238,21 +235,8 @@ def add_embedding(state, tokens, embeddings):
         
         # Move to CPU and convert to NumPy
         embedding = embedding_tensor.squeeze(0).cpu().numpy().astype(np.float32)  # Shape: [64]
-        
-        # Shift embeddings to the left and insert the new embedding at the end
-        embeddings = np.roll(embeddings, -1, axis=1)  # Shift left along S_LEN axis
-        embeddings[:, -1] = embedding  # Insert new embedding
-        
-    # Concatenate embeddings to state
-    print("embedding shape: ", embeddings.shape)  # [64, 6]
-    print("add_embedding state shape before embedding:", state.shape)  # [6, 6]
-    if len(state.shape) == 3:
-        updated_state = np.concatenate((state.squeeze(0), embeddings), axis=0)  # [6 + 64, 6] = [70, 6]
-    else:
-        updated_state = np.concatenate((state, embeddings), axis=0)
-    print("state shape after embedding:", updated_state.shape)  # [70, 6]
-    
-    return updated_state, embeddings
+
+    return embedding
 
 
 
@@ -306,7 +290,7 @@ def launch_video_server_and_bftrace(agent_id, agent_logger=None, run_video_serve
         bftrace_proc.terminate()
 
 def null_embedding_and_token():
-    embedding = np.zeros((EMBEDDING_SIZE, S_LEN), dtype=np.float32)
+    embedding = np.zeros((EMBEDDING_SIZE), dtype=np.float32)
     tokens = np.array([])
     return embedding, tokens
 
@@ -325,5 +309,5 @@ def transform_state_and_add_embedding(agent_id, state, embeddings, tokens):
         tokens = compute_token(bpftrace_out_path)
     print(f"add_embedding1 state shape: {state.shape}")
     # print(f"Tokens: {tokens}")
-    state, embeddings = add_embedding(state, tokens, embeddings)
-    return state, embeddings, tokens
+    embeddings = add_embedding(state, tokens, embeddings)
+    return embeddings, tokens

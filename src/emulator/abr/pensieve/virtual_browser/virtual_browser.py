@@ -52,6 +52,10 @@ def parse_args():
                                  'Bola', 'RLTrain'], help='ABR algorithm.')
     parser.add_argument('--actor-path', type=str, default=None,
                         help='Path to RL model.')
+    parser.add_argument('--original-model-path', type=str, default=None,
+                        help='Path to original RL model.')
+    parser.add_argument('--adaptor-input', type=str, default=None,
+                        help='Type of adaptor input.')
 
     # data io related
     parser.add_argument('--summary-dir', type=str, required=True,
@@ -198,6 +202,8 @@ def main():
             args.video_size_file_dir,
             args.abr_server_ip,
             args.abr_server_port,
+            args.original_model_path,
+            args.adaptor_input,
             embedding,
             tokens,
         )

@@ -114,13 +114,15 @@ class Pensieve():
 
     def __init__(self, num_agents, log_dir, actor=None,
                  critic_path=None, model_save_interval=100, batch_size=100,
-                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces=""):
+                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces="", original_actor=None, adaptor_input=None):
         # https://github.com/pytorch/pytorch/issues/3966
         # mp.set_start_method("spawn")
         self.num_agents = num_agents
 
 
         self.net = actor
+        self.original_actor = original_actor
+        self.adaptor_input = adaptor_input
         # NOTE: this is required for the ``fork`` method to work
         # self.net.actor_network.share_memory()
         # self.net.critic_network.share_memory()
@@ -148,6 +150,11 @@ class Pensieve():
         self.central_logger = setup_logger(
             "centralLogger",
             "/mydata/logs/log_central"  # Or use os.path.join(log_dir, "log_central")
+        )
+        
+        self.test_logger = setup_logger(
+            "testLogger",
+            "/mydata/logs/log_test"
         )
 
 
@@ -443,12 +450,54 @@ class Pensieve():
         # print(bit_rate)
         return bit_rate
 
-    def select_action(self, state, last_bit_rate, use_embedding=False):
+    def select_action(self, state, last_bit_rate, use_embedding=False, embeddings=None):
         if use_embedding:
-            print("use embedding")
-            action_prob = self.net.predict( np.reshape( state ,(1, S_INFO+EMBEDDING_SIZE, S_LEN) ) )
+            self.test_logger.info("use embedding")
+            if self.adaptor_input is not None:
+                if self.adaptor_input == "ACTION":
+                    self.test_logger.info("action adaptor")
+                    original_action_prob = self.original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
+                    original_action_cumsum = np.cumsum( original_action_prob )
+                    original_selection = (original_action_cumsum > np.random.randint(
+                        1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
+                    original_bit_rate = calculate_from_selection( original_selection ,last_bit_rate )
+                    
+                    self.test_logger.info(f"Original action: {original_bit_rate}")                    
+                    self.test_logger.info(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
+
+                    adaptor_input = np.concatenate((np.array([original_bit_rate]), embeddings), axis=0)
+                    self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")                    
+                    action_prob = self.net.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
+                    action_cumsum = np.cumsum(action_prob)
+                    selection = (action_cumsum > np.random.randint(
+                        1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+                    bit_rate = calculate_from_selection(selection, original_bit_rate)
+                    self.test_logger.info("Select action with actor adaptor - original_bit_rate: {}, bit_rate: {}".format(original_bit_rate, bit_rate))
+                    return bit_rate
+                elif self.adaptor_input == "HIDDEN":
+                    self.test_logger.info("hidden adaptor")
+                    original_hidden =  self.original_actor.get_hidden(np.reshape(state, (1, S_INFO, S_LEN)))
+
+                    # Flatten the hidden state output
+                    original_hidden_flat = original_hidden.flatten()  # Converts (1, 128) -> (128,)
+
+                    self.test_logger.info(f"Original hidden: {original_hidden.shape}")
+                    
+                    # Flatten embeddings if necessary
+                    embeddings_flat = embeddings.flatten()  # Converts (16,) -> (16,)
+                    
+                    # print(f"original_bit_rate type: {type(original_bit_rate)}, shape: {np.shape(original_bit_rate)}")
+                    self.test_logger.info(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
+                    adaptor_input = np.concatenate((original_hidden_flat, embeddings_flat))  # Shape: (128 + 16,) -> (144,)
+                    # adaptor_input = np.concatenate((np.array([original_hidden]), embeddings), axis=0)
+                    self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")                    
+
+                    action_prob = self.net.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
+                else:
+                    self.test_logger.info("no adaptor")
+                    action_prob = self.net.predict( np.reshape( state ,(1, S_INFO+EMBEDDING_SIZE, S_LEN) ) )
         else:
-            print("no embedding")
+            self.test_logger.info("no embedding")
             action_prob = self.net.predict( np.reshape( state ,(1, S_INFO, S_LEN) ) )
         action_cumsum = np.cumsum( action_prob )
         selection = (action_cumsum > np.random.randint(

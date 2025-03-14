@@ -22,7 +22,7 @@ class ActorNetwork(object):
         # self.lr_rate = learning_rate
 
         # Create the actor network
-        self.inputs, self.out = self.create_actor_network()
+        self.inputs, self.out, self.hidden = self.create_actor_network()
 
         # Get all network parameters
         self.network_params = \
@@ -86,7 +86,7 @@ class ActorNetwork(object):
             dense_net_0 = tflearn.fully_connected(merge_net, 128, activation='relu')
             out = tflearn.fully_connected(dense_net_0, self.a_dim, activation='softmax')
 
-            return inputs, out
+            return inputs, out, dense_net_0
 
     def train(self, inputs, acts, act_grad_weights, entropy_weight):
 
@@ -122,6 +122,11 @@ class ActorNetwork(object):
         self.sess.run(self.set_network_params_op, feed_dict={
             i: d for i, d in zip(self.input_network_params, input_network_params)
         })
+        
+    def get_hidden(self, inputs):
+        return self.sess.run(self.hidden, feed_dict={
+            self.inputs: inputs
+        })
 
 
 class CriticNetwork(object):
@@ -137,7 +142,7 @@ class CriticNetwork(object):
 
 
         # Create the critic network
-        self.inputs, self.out = self.create_critic_network()
+        self.inputs, self.out, self.hidden = self.create_critic_network()
 
         # Get all network parameters
         self.network_params = \
@@ -189,7 +194,7 @@ class CriticNetwork(object):
             dense_net_0 = tflearn.fully_connected(merge_net, 128, activation='relu')
             out = tflearn.fully_connected(dense_net_0, 1, activation='linear')
 
-            return inputs, out
+            return inputs, out, dense_net_0
 
     def train(self, inputs, td_target):
         return self.sess.run([self.loss, self.optimize], feed_dict={
@@ -225,6 +230,11 @@ class CriticNetwork(object):
     def set_network_params(self, input_network_params):
         self.sess.run(self.set_network_params_op, feed_dict={
             i: d for i, d in zip(self.input_network_params, input_network_params)
+        })
+        
+    def get_hidden(self, inputs):
+        self.sess.run(self.hidden, feed_dict={
+            self.inputs: inputs
         })
 
 

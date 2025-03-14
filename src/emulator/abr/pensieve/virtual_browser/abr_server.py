@@ -16,7 +16,8 @@ import numpy as np
 import logging
 
 from pensieve.agent_policy import Pensieve, RobustMPC, BufferBased, FastMPC, RLTrain, rl_embedding
-from pensieve.a3c.a3c_jump import ActorNetwork
+from pensieve.a3c.a3c_jump import ActorNetwork as OriginalActorNetwork
+from pensieve.a3c.adaptor import ActorNetwork
 
 from pensieve.constants import (
     A_DIM,
@@ -223,11 +224,11 @@ def make_request_handler(server_states):
                     if self.embedding is not None and self.tokens is not None:
                         use_embedding = True
                         redis_pipe.set(f"{self.agent_id}_use_embedding", int(True))
-                        state, self.embedding, self.tokens =  rl_embedding.transform_state_and_add_embedding(self.agent_id, state, self.embedding, self.tokens)
+                        self.embedding, self.tokens =  rl_embedding.transform_state_and_add_embedding(self.agent_id, state, self.embedding, self.tokens)
                         self.logger.info(f"Embedding transformed: {self.embedding}") 
                     
                     bit_rate = self.abr.select_action(
-                       state, last_bit_rate=self.server_states['last_bit_rate'], use_embedding=use_embedding)
+                       state, last_bit_rate=self.server_states['last_bit_rate'], use_embedding=use_embedding, embeddings=self.embedding)
                     
                 elif isinstance(self.abr, RobustMPC):
                     last_index = int(post_data['lastRequest'])
@@ -311,7 +312,7 @@ def make_request_handler(server_states):
     return Request_Handler
 
 def run_abr_server(abr, trace_file, summary_dir, actor_path,
-                   video_size_file_dir, ip='localhost', port=8333, embedding=None, tokens=None):
+                   video_size_file_dir, ip='localhost', port=8333, original_model_path=None, adaptor_input=None, embedding=None, tokens=None):
     print(f"Summary Directory {summary_dir}")
     os.makedirs(summary_dir, exist_ok=True)
     log_file_path = os.path.join(
@@ -319,19 +320,35 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
     agent_id = os.path.basename(summary_dir).split("_")[1]
 
     with tf.Session() as sess ,open( log_file_path ,'wb' ) as log_file:
+        
+        actor = None
+        if adaptor_input == 'ACTION':
+            actor = ActorNetwork(sess,
+                                state_dim=rl_embedding.EMBEDDING_SIZE+1,
+                                action_dim=3,
+                                bitrate_dim=len(VIDEO_BIT_RATE))
+        elif adaptor_input == 'HIDDEN':
+            actor = ActorNetwork(sess,
+                                state_dim=rl_embedding.EMBEDDING_SIZE+rl_embedding.HIDDEN_SIZE,
+                                action_dim=3,
+                                bitrate_dim=len(VIDEO_BIT_RATE))
 
-        actor = ActorNetwork( sess ,
-                              state_dim=[rl_embedding.EMBEDDING_SIZE+S_INFO ,6] ,action_dim=3 ,
+        original_actor = OriginalActorNetwork( sess ,
+                              state_dim=[S_INFO ,S_LEN] ,action_dim=3 ,
                               bitrate_dim=6)
 
         sess.run( tf.initialize_all_variables() )
-        saver = tf.train.Saver()  # save neural net parameters
+        # Restore models if paths are provided
+        actor_saver = tf.train.Saver(var_list=actor.network_params) if actor else None
+        original_actor_saver = tf.train.Saver(var_list=original_actor.network_params)
 
-        # restore neural net parameters
-        nn_model = actor_path
-        if nn_model is not None:  # nn_model is the path to file
-            saver.restore( sess ,nn_model )
-            #print( "Model restored." )
+        if actor_path and actor_saver:
+            print(f"Restoring ActorNetwork model from {actor_path}")
+            actor_saver.restore(sess, actor_path)
+
+        if original_model_path:
+            print(f"Restoring OriginalActorNetwork model from {original_model_path}")
+            original_actor_saver.restore(sess, original_model_path)
 
         if abr == 'RobustMPC':
             abr = RobustMPC()
@@ -339,7 +356,7 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
             abr = FastMPC()
         elif abr == 'RL':
             # assert actor_path is not None, "actor-path is needed for RL abr."
-            abr = Pensieve(16, summary_dir, actor=actor)
+            abr = Pensieve(16, summary_dir, actor=actor, original_actor=original_actor, model_save_interval=100, adaptor_input=adaptor_input)
         elif abr == 'BufferBased':
             abr = BufferBased()
         elif abr == 'RLTrain':
