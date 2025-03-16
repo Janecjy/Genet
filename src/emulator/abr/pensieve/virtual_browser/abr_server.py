@@ -320,41 +320,40 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
     agent_id = os.path.basename(summary_dir).split("_")[1]
 
     with tf.Session() as sess ,open( log_file_path ,'wb' ) as log_file:
-        
-        actor = None
-        if adaptor_input == 'ACTION':
-            actor = ActorNetwork(sess,
-                                state_dim=rl_embedding.EMBEDDING_SIZE+1,
-                                action_dim=3,
-                                bitrate_dim=len(VIDEO_BIT_RATE))
-        elif adaptor_input == 'HIDDEN':
-            actor = ActorNetwork(sess,
-                                state_dim=rl_embedding.EMBEDDING_SIZE+rl_embedding.HIDDEN_SIZE,
-                                action_dim=3,
-                                bitrate_dim=len(VIDEO_BIT_RATE))
-
-        original_actor = OriginalActorNetwork( sess ,
-                              state_dim=[S_INFO ,S_LEN] ,action_dim=3 ,
-                              bitrate_dim=6)
-
-        sess.run( tf.initialize_all_variables() )
-        # Restore models if paths are provided
-        actor_saver = tf.train.Saver(var_list=actor.network_params) if actor else None
-        original_actor_saver = tf.train.Saver(var_list=original_actor.network_params)
-
-        if actor_path and actor_saver:
-            print(f"Restoring ActorNetwork model from {actor_path}")
-            actor_saver.restore(sess, actor_path)
-
-        if original_model_path:
-            print(f"Restoring OriginalActorNetwork model from {original_model_path}")
-            original_actor_saver.restore(sess, original_model_path)
 
         if abr == 'RobustMPC':
             abr = RobustMPC()
         elif abr == 'FastMPC':
             abr = FastMPC()
         elif abr == 'RL':
+            actor = None
+            if adaptor_input == 'ACTION':
+                actor = ActorNetwork(sess,
+                                    state_dim=rl_embedding.EMBEDDING_SIZE+1,
+                                    action_dim=3,
+                                    bitrate_dim=len(VIDEO_BIT_RATE))
+            elif adaptor_input == 'HIDDEN':
+                actor = ActorNetwork(sess,
+                                    state_dim=rl_embedding.EMBEDDING_SIZE+rl_embedding.HIDDEN_SIZE,
+                                    action_dim=3,
+                                    bitrate_dim=len(VIDEO_BIT_RATE))
+
+            original_actor = OriginalActorNetwork( sess ,
+                                state_dim=[S_INFO ,S_LEN] ,action_dim=3 ,
+                                bitrate_dim=6)
+
+            sess.run( tf.initialize_all_variables() )
+            # Restore models if paths are provided
+            actor_saver = tf.train.Saver(var_list=actor.network_params) if actor else None
+            original_actor_saver = tf.train.Saver(var_list=original_actor.network_params)
+
+            if actor_path and actor_saver:
+                print(f"Restoring ActorNetwork model from {actor_path}")
+                actor_saver.restore(sess, actor_path)
+
+            if original_model_path:
+                print(f"Restoring OriginalActorNetwork model from {original_model_path}")
+                original_actor_saver.restore(sess, original_model_path)
             # assert actor_path is not None, "actor-path is needed for RL abr."
             abr = Pensieve(16, summary_dir, actor=actor, original_actor=original_actor, model_save_interval=100, adaptor_input=adaptor_input)
         elif abr == 'BufferBased':

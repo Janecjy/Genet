@@ -75,9 +75,10 @@ def setup_server(server_config, server_index):
     server = server_config["hostname"]
     branch = server_config["branch"]
     redis_node = server_config["redis"]
+    redis_ip = server_config["redis_ip"]
 
     # Define Redis IP based on server index (starting from 1)
-    redis_ip = f"10.10.1.{server_index + 1}"
+    # redis_ip = f"10.10.1.{server_index + 1}"
 
     setup_commands = [
         "sudo DEBIAN_FRONTEND=noninteractive apt-get update -y",
@@ -131,17 +132,17 @@ def setup_server(server_config, server_index):
         # Install Python dependencies inside Conda
         "source ~/miniconda/bin/activate genet_env && pip install numpy tensorflow==1.15.0 selenium pyvirtualdisplay numba torch tflearn xvfbwrapper matplotlib redis scipy pandas"
 
-        "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
-        "sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install ./google-chrome-stable_current_amd64.deb"
+        # "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
+        # "sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install ./google-chrome-stable_current_amd64.deb"
     ]
     
     # Redis configuration using the dynamically assigned IP
-    # if redis_node:
-    #     redis_commands = [
-    #         f"tmux new-session -d -s redis 'redis-server --port {REDIS_PORT} --bind {redis_ip} --protected-mode no'",
-    #         f"echo 'Redis started on {redis_ip}:{REDIS_PORT} in tmux session on {server}'"
-    #     ]
-    #     setup_commands.extend(redis_commands)
+    if redis_node:
+        redis_commands = [
+            f"tmux new-session -d -s redis 'redis-server --port {REDIS_PORT} --bind {redis_ip} --protected-mode no'",
+            f"echo 'Redis started on {redis_ip}:{REDIS_PORT} in tmux session on {server}'"
+        ]
+        setup_commands.extend(redis_commands)
     
     # If the branch is `network-state`, add additional setup commands
     # if branch == "network-state":

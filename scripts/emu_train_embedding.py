@@ -86,14 +86,13 @@ def train_server(server_config, index):
             "rm -rf /mydata/*",
             "mkdir -p /mydata/logs",
             f"cd ~/Genet && git reset --hard && git fetch && git checkout {branch} && git pull",
-            "tmux new-session -d -s main 'bash'",
-            f"grep -rl --include='*.py' '10.10.1.1' ~/Genet/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.1/{redis_ip}/g' || true",
+            f"grep -rl --include='*.py' '10.10.1.2' ~/Genet/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.2/{redis_ip}/g' || true",
+            # "tmux new-session -d -s main 'bash'",
             "tmux new-window -t main -n training_window",
             f"tmux send-keys -t main:training_window 'source ~/miniconda/bin/activate genet_env' C-m",
             f"tmux send-keys -t main:training_window 'cd ~/Genet' C-m",
-            f"tmux send-keys -t main:training_window 'src/drivers/abr/train_udr3_emu_par.sh --mode emulation --emulation-seed {emulation_seed} ",
-            f"--adaptor-input {adaptor_input} --adaptor-hidden-layer {hidden_layer} ",
-            f"2>&1 | tee {log_filename}' C-m",
+            f"tmux send-keys -t main:training_window 'src/drivers/abr/train_udr3_emu_par.sh --mode emulation --emulation-seed {emulation_seed} "
+            f"--adaptor-input {adaptor_input} --adaptor-hidden-layer {hidden_layer} 2>&1 | tee {log_filename}' C-m"
             "tmux ls"
         ]
         run_remote_commands(server, commands)

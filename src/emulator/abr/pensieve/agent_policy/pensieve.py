@@ -25,8 +25,7 @@ from emulator.abr.pensieve import a3c
 from emulator.abr.pensieve.utils import linear_reward
 from emulator.abr.pensieve.a3c.a3c_jump import ActorNetwork as OriginalActorNetwork
 from models import *
-# from .models import create_mask
-from models import *
+import rl_embedding
 from rl_embedding import *
 # from .models import create_mask
 
