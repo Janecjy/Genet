@@ -79,13 +79,13 @@ def train_server(server_config, index):
         adaptor_index = index % len(adaptor_configs)
         adaptor_input, hidden_layer = adaptor_configs[adaptor_index]
         log_filename = f"/mydata/logs/emu_{emulation_seed}_{adaptor_input}_{hidden_layer}.out"
-        print(f"Starting training on {server} with adaptor_input={adaptor_input}, hidden_layer={hidden_layer}")
+        print(f"Starting training on {server} branch {branch} with adaptor_input={adaptor_input}, hidden_layer={hidden_layer}")
         
         commands = [
             "tmux kill-server || true",
             "rm -rf /mydata/*",
             "mkdir -p /mydata/logs",
-            "cd ~/Genet && git reset --hard && git pull",
+            f"cd ~/Genet && git reset --hard && git fetch && git checkout {branch} && git pull",
             "tmux new-session -d -s main 'bash'",
             f"grep -rl --include='*.py' '10.10.1.1' ~/Genet/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.1/{redis_ip}/g' || true",
             "tmux new-window -t main -n training_window",

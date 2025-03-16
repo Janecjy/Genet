@@ -84,7 +84,7 @@ elif [ "$MODE" = "emulation" ]; then
         --original-model-path ${original_model_path} \
         --jump-action \
         --adaptor-input ${adaptor_input} \
-        --adaptor-hidden-layer ${adaptor_hidden_layer}
+        --adaptor-hidden-layer ${adaptor_hidden_layer} \
         udr \
         --config-file ${config_file} \
         --val-trace-dir ${val_trace_dir}
