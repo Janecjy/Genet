@@ -310,4 +310,4 @@ def transform_state_and_add_embedding(agent_id, state, embeddings, tokens):
     print(f"add_embedding1 state shape: {state.shape}")
     # print(f"Tokens: {tokens}")
     embeddings = add_embedding(state, tokens, embeddings)
-    return embeddings, tokens
+    return state, embeddings, tokens
