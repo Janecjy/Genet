@@ -72,6 +72,7 @@ def train_server(server_config, index):
     server = server_config["hostname"]
     branch = server_config["branch"]
     redis_ip = server_config["redis_ip"]
+    run = server_config["run"]
     emulation_seed = 10 # * (index + 1)
     log_filename = f"/mydata/logs/emu_{emulation_seed}.out"
 
@@ -95,7 +96,8 @@ def train_server(server_config, index):
             f"--adaptor-input {adaptor_input} --adaptor-hidden-layer {hidden_layer} 2>&1 | tee {log_filename}' C-m",
             "tmux ls"
         ]
-        run_remote_commands(server, commands)
+        if run:
+            run_remote_commands(server, commands)
     else:
         log_filename = f"/mydata/logs/emu_{emulation_seed}.out"
         commands = [
