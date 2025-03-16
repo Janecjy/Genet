@@ -279,7 +279,7 @@ def launch_video_server_and_bftrace(agent_id, agent_logger=None, run_video_serve
     # Optional: short sleep so bpftrace can initialize
     time.sleep(1.0)
 
-    return video_server_proc, bpftrace_proc
+    return video_server_proc, bpftrace_proc, video_server_port
 
     if wait:
         stop_flag = redis_client.get(f"{agent_id}_stop_flag")

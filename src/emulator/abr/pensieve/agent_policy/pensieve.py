@@ -752,7 +752,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
     )
     agent_logger.info("Agent %d started!", agent_id)
 
-    rl_embedding.launch_video_server_and_bftrace(agent_id, agent_logger)
+    _, _, video_server_port = rl_embedding.launch_video_server_and_bftrace(agent_id, agent_logger)
 
     # 3) Create redis for state/action communication
     redis_client = redis.Redis(host="10.10.1.2", port=2666, decode_responses=True)
