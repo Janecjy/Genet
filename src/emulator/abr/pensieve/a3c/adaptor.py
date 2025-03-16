@@ -23,11 +23,12 @@ class ActorNetwork(object):
     of all actions.
     """
 
-    def __init__(self, sess, state_dim, action_dim, bitrate_dim):
+    def __init__(self, sess, state_dim, action_dim, bitrate_dim, hidden_dim):
         self.sess = sess
         self.s_dim = state_dim
         self.a_dim = action_dim
         self.bitrate_dim = bitrate_dim
+        self.hidden_dim = hidden_dim
         # self.lr_rate = learning_rate
 
         # Create the actor network
@@ -81,13 +82,13 @@ class ActorNetwork(object):
             inputs = tflearn.input_data(shape=[None, self.s_dim])
             
             # First fully connected layer
-            net1 = tflearn.fully_connected(inputs, 128, activation='relu')
+            net1 = tflearn.fully_connected(inputs, self.hidden_dim, activation='relu')
             
             # Second fully connected layer
-            net2 = tflearn.fully_connected(net1, 128, activation='relu')
+            net2 = tflearn.fully_connected(net1, self.hidden_dim, activation='relu')
             
             # Third fully connected layer
-            net3 = tflearn.fully_connected(net2, 128, activation='relu')
+            net3 = tflearn.fully_connected(net2, self.hidden_dim, activation='relu')
             
             # Output layer with a_dim outputs, using softmax
             out = tflearn.fully_connected(net3, self.a_dim, activation='softmax')
@@ -148,12 +149,12 @@ class CriticNetwork(object):
     Input to the network is the state and action, output is V(s).
     On policy: the action must be obtained from the output of the Actor network.
     """
-    def __init__(self, sess, state_dim, learning_rate, bitrate_dim):
+    def __init__(self, sess, state_dim, learning_rate, bitrate_dim, hidden_dim):
         self.sess = sess
         self.s_dim = state_dim
         self.lr_rate = learning_rate
         self.bitrate_dim = bitrate_dim
-
+        self.hidden_dim = hidden_dim
 
         # Create the critic network
         self.inputs, self.out = self.create_critic_network()
@@ -193,13 +194,13 @@ class CriticNetwork(object):
             inputs = tflearn.input_data(shape=[None, self.s_dim])
             
             # First fully connected layer
-            net1 = tflearn.fully_connected(inputs, 128, activation='relu')
+            net1 = tflearn.fully_connected(inputs, self.hidden_dim, activation='relu')
             
             # Second fully connected layer
-            net2 = tflearn.fully_connected(net1, 128, activation='relu')
+            net2 = tflearn.fully_connected(net1, self.hidden_dim, activation='relu')
             
             # Third fully connected layer
-            net3 = tflearn.fully_connected(net2, 128, activation='relu')
+            net3 = tflearn.fully_connected(net2, self.hidden_dim, activation='relu')
             
             # Output layer with a_dim outputs, using softmax
             out = tflearn.fully_connected(net3, 1, activation='linear')

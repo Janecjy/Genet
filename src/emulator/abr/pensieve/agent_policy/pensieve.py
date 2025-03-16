@@ -114,7 +114,7 @@ class Pensieve():
 
     def __init__(self, num_agents, log_dir, actor=None,
                  critic_path=None, model_save_interval=100, batch_size=100,
-                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces="", original_actor=None, adaptor_input=None):
+                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces="", original_actor=None, adaptor_input=None, adaptor_hidden_layer=None):
         # https://github.com/pytorch/pytorch/issues/3966
         # mp.set_start_method("spawn")
         self.num_agents = num_agents
@@ -123,6 +123,17 @@ class Pensieve():
         self.net = actor
         self.original_actor = original_actor
         self.adaptor_input = adaptor_input
+        self.adaptor_hidden_layer = adaptor_hidden_layer
+        if self.adaptor_input == "original_action_prob":
+            self.state_dim = 3 + EMBEDDING_SIZE
+        elif self.adaptor_input == "original_selection":
+            self.state_dim = 1 + EMBEDDING_SIZE
+        elif self.adaptor_input == "original_bit_rate":
+            self.state_dim = 1 + EMBEDDING_SIZE
+        elif self.adaptor_input == "hidden_state":
+            self.state_dim = HIDDEN_SIZE + EMBEDDING_SIZE
+        else:
+            self.state_dim = [S_INFO+EMBEDDING_SIZE, S_LEN] 
         # NOTE: this is required for the ``fork`` method to work
         # self.net.actor_network.share_memory()
         # self.net.critic_network.share_memory()
@@ -200,7 +211,10 @@ class Pensieve():
                     self.randomization,
                     self.randomization_interval,
                     self.num_agents,
-                    original_actor_path
+                    original_actor_path,
+                    self.adaptor_input,
+                    self.adaptor_hidden_layer,
+                    self.state_dim
                 )
             ))
             # agents.append(mp.Process(
@@ -221,14 +235,16 @@ class Pensieve():
                  'rewards_median', 'rewards_95per', 'rewards_max'])
 
             actor = a3c.ActorNetwork(sess,
-                                     state_dim=EMBEDDING_SIZE+1,
+                                     state_dim=self.state_dim,
                                      action_dim=A_DIM,
-                                     bitrate_dim=BITRATE_DIM)
+                                     bitrate_dim=BITRATE_DIM,
+                                     hidden_dim=self.adaptor_hidden_layer)
                                      # learning_rate=args.ACTOR_LR_RATE)
             critic = a3c.CriticNetwork(sess,
-                                       state_dim=EMBEDDING_SIZE+1,
+                                       state_dim=self.state_dim,
                                        learning_rate=CRITIC_LR_RATE,
-                                       bitrate_dim=BITRATE_DIM)
+                                       bitrate_dim=BITRATE_DIM,
+                                       hidden_dim=self.adaptor_hidden_layer)
 
             self.train_logger.info('actor and critic initialized')
             # summary_ops, summary_vars = a3c.build_summaries()
@@ -725,7 +741,7 @@ def compute_reward(msg, bit_rate, last_quality):
 
 def agent(agent_id, net_params_queue, exp_queue, train_envs,
           summary_dir, batch_size, randomization, randomization_interval,
-          num_agents, original_actor_path):
+          num_agents, original_actor_path, adaptor_input_type, adaptor_hidden_layer, s_dim):
     """
     Each agent process picks an environment (delay, trace) from train_envs,
     starts a Mahimahi shell, runs the virtual_browser, collects data, etc.
@@ -756,10 +772,12 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
             print("Original model restored.")
         
         actor = a3c.ActorNetwork(sess, state_dim=EMBEDDING_SIZE+1,
-                                 action_dim=A_DIM, bitrate_dim=BITRATE_DIM)
+                                 action_dim=A_DIM, bitrate_dim=BITRATE_DIM,
+                                 hidden_dim=adaptor_hidden_layer)
         critic = a3c.CriticNetwork(sess, state_dim=EMBEDDING_SIZE+1,
                                   learning_rate=CRITIC_LR_RATE,
-                                  bitrate_dim=BITRATE_DIM)
+                                  bitrate_dim=BITRATE_DIM,
+                                  hidden_dim=adaptor_hidden_layer)
 
         # Initial synchronization of network parameters from the coordinator
         actor_net_params, critic_net_params = net_params_queue.get()
@@ -773,7 +791,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         action_vec = np.zeros(A_DIM)
         action_vec[selection] = 1
 
-        s_batch = [np.zeros(EMBEDDING_SIZE+1)]
+        s_batch = [np.zeros(s_dim)]
         a_batch = [action_vec]
         r_batch = []
         entropy_record = []
@@ -785,7 +803,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         reward = None
 
         # 2) Get its training environment with a random delay and a random synthetic trace
-        np.random.seed(agent_id)
+        # np.random.seed(agent_id)
         delay_val = random.choice(train_envs["delay_list"])
         scheduler = train_envs["train_scheduler"]
         abr_trace = scheduler.get_trace()
@@ -850,6 +868,32 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                 if recv_state:
                     state, embeddings, tokens = rl_embedding.transform_state_and_add_embedding(agent_id, state, embeddings, tokens)                    
                     r_batch.append(reward)
+                    if (adaptor_input_type == "original_action_prob"):
+                        original_action_prob = original_actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
+                        adaptor_input = np.concatenate((original_action_prob, embeddings), axis=0)
+                    elif (adaptor_input_type == "original_selection"):
+                        # Get original actor model action
+                        original_action_prob = original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
+                        original_action_cumsum = np.cumsum( original_action_prob )
+                        original_selection = (original_action_cumsum > np.random.randint(
+                            1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
+                        adaptor_input = np.concatenate((np.array([original_selection]), embeddings), axis=0)
+                    elif (adaptor_input_type == "original_bit_rate"):
+                        original_action_prob = original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
+                        original_action_cumsum = np.cumsum( original_action_prob )
+                        original_selection = (original_action_cumsum > np.random.randint(
+                            1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
+                        bit_rate = calculate_from_selection( original_selection ,last_bit_rate )
+                        adaptor_input = np.concatenate((np.array([bit_rate]), embeddings), axis=0)
+                    elif (adaptor_input_type == "hidden_state"):
+                        original_hidden = original_actor.get_hidden(np.reshape(state, (1, S_INFO, S_LEN)))
+                        # Flatten the hidden state output
+                        original_hidden_flat = original_hidden.flatten()  # Converts (1, 128) -> (128,)
+                        # Flatten embeddings if necessary
+                        embeddings_flat = embeddings.flatten()  # Converts (16,) -> (16,)
+                        # print(f"original_bit_rate type: {type(original_bit_rate)}, shape: {np.shape(original_bit_rate)}")
+                        agent_logger.info(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
+                        adaptor_input = np.concatenate((original_hidden_flat, embeddings_flat))
 
                     action_prob = actor.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
                     if np.isnan(action_prob[0, 0]) and agent_id == 0:
@@ -861,7 +905,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     action_cumsum = np.cumsum(action_prob)
                     selection = (action_cumsum > np.random.randint(
                         1, RAND_RANGE) / float(RAND_RANGE)).argmax()
-                    bit_rate = calculate_from_selection(selection, original_bit_rate)
+                    bit_rate = calculate_from_selection(selection, last_bit_rate)
                     entropy_record.append(a3c.compute_entropy(action_prob[0]))
 
                     end_of_video = redis_client.get(f"{agent_id}_stop_flag")
@@ -900,7 +944,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     action_vec = np.zeros(A_DIM)
                     selection = 0
                     action_vec[selection] = 1
-                    s_batch.append(np.zeros((S_INFO+EMBEDDING_SIZE, S_LEN)))
+                    s_batch.append(np.zeros((s_dim)))
                     a_batch.append(action_vec)
                     r_batch.append(0)
                     embeddings, tokens = rl_embedding.null_embedding_and_token()
@@ -925,7 +969,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         action_vec = np.zeros(A_DIM)
                         selection = 0
                         action_vec[selection] = 1
-                        s_batch.append(np.zeros(EMBEDDING_SIZE+1))
+                        s_batch.append(np.zeros(s_dim))
                         a_batch.append(action_vec)
                         # r_batch.append(0)
                         tokens = np.array([])

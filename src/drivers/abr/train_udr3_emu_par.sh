@@ -8,6 +8,7 @@
 # flow using 'src/simulator/abr_simulator/pensieve/train.py'.
 # - If --mode is "emulation", runs the provided emulation command.
 # - Use --emulation-seed to specify the seed for emulation mode (default: 10).
+# - Use --adaptor-input and --adaptor-hidden-layer to specify emulation parameters.
 ##############################################################################
 set -e
 rm -rf /mydata/results/*
@@ -24,6 +25,8 @@ original_model_path=fig_reproduce/data/all_models/udr_3/nn_model_ep_58000.ckpt
 # Default mode
 MODE="simulation"
 emulation_seed=10
+adaptor_input=""
+adaptor_hidden_layer=""
 
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -36,9 +39,17 @@ case $1 in
         emulation_seed="$2"
         shift
         ;;
+    --adaptor-input)
+        adaptor_input="$2"
+        shift
+        ;;
+    --adaptor-hidden-layer)
+        adaptor_hidden_layer="$2"
+        shift
+        ;;
     *) # unknown option
         echo "Unknown option: $1"
-        echo "Usage: $0 [--mode simulation|emulation] [--emulation-seed SEED]"
+        echo "Usage: $0 [--mode simulation|emulation] [--emulation-seed SEED] [--adaptor-input INPUT] [--adaptor-hidden-layer LAYER]"
         exit 1
         ;;
 esac
@@ -62,7 +73,6 @@ if [ "$MODE" = "simulation" ]; then
     done
 elif [ "$MODE" = "emulation" ]; then
     echo "Running in emulation mode..."
-    # Run your specific emulation command here:
     python src/emulator/abr/pensieve/agent_policy/train.py \
         --total-epoch ${total_epoch} \
         --seed ${emulation_seed} \
@@ -73,11 +83,13 @@ elif [ "$MODE" = "emulation" ]; then
         --model-save-interval 10 \
         --original-model-path ${original_model_path} \
         --jump-action \
+        --adaptor-input ${adaptor_input} \
+        --adaptor-hidden-layer ${adaptor_hidden_layer}
         udr \
         --config-file ${config_file} \
         --val-trace-dir ${val_trace_dir}
 else
     echo "Unknown mode: $MODE"
-    echo "Usage: $0 [--mode simulation|emulation] [--emulation-seed SEED]"
+    echo "Usage: $0 [--mode simulation|emulation] [--emulation-seed SEED] [--adaptor-input INPUT] [--adaptor-hidden-layer LAYER]"
     exit 1
 fi
