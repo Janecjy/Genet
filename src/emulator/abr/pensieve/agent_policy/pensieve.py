@@ -895,6 +895,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         agent_logger.info(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
                         adaptor_input = np.concatenate((original_hidden_flat, embeddings_flat))
 
+                    agent_logger.info(f"[Agent {agent_id}] Adaptor input shape: {adaptor_input.shape}")
                     action_prob = actor.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
                     if np.isnan(action_prob[0, 0]) and agent_id == 0:
                         print(epoch)
@@ -934,31 +935,6 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
                             # so that in the log we know where video ends
 
-                # store the state and action into batches
-                end_of_video = redis_client.get(f"{agent_id}_stop_flag")
-                agent_logger.info(f"[Agent {agent_id}] end_of_video check 2: {end_of_video}")
-                if end_of_video and int(end_of_video) == 1:
-                    last_bit_rate = DEFAULT_QUALITY
-                    bit_rate = DEFAULT_QUALITY  # use the default action here
-                    #action_vec = np.array( [VIDEO_BIT_RATE[last_bit_rate] ,VIDEO_BIT_RATE[bit_rate] ,selection] )
-                    action_vec = np.zeros(A_DIM)
-                    selection = 0
-                    action_vec[selection] = 1
-                    s_batch.append(np.zeros((s_dim)))
-                    a_batch.append(action_vec)
-                    r_batch.append(0)
-                    embeddings, tokens = rl_embedding.null_embedding_and_token()
-                    epoch += 1
-                    # reset virtual browser
-                    agent_logger.info(f"[Agent {agent_id}] Resetting virtual browser.")
-                    print(f"[Agent {agent_id}] Resetting virtual browser.")
-                    # redis_client.flushdb() # Wrong, should only reset the agent's state
-                    # only flush the agent's state
-                    for key in redis_client.scan_iter(f"{agent_id}_*"):
-                        redis_client.delete(key)
-                    agent_logger.info(redis_client.keys(f"{agent_id}_*"))
-                    redis_client.set(f"{agent_id}_browser_active", 0)
-                    redis_client.set(f"{agent_id}_new_epoch", 1)
                     # store the state and action into batches
                     end_of_video = redis_client.get(f"{agent_id}_stop_flag")
                     agent_logger.info(f"[Agent {agent_id}] end_of_video check 2: {end_of_video}")
