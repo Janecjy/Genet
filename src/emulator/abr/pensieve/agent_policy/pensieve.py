@@ -870,7 +870,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     if (adaptor_input_type == "original_action_prob"):
                         original_action_prob = original_actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
                         original_action_prob_flatten = original_action_prob.flatten()  # Converts (1, 3) -> (3,)
-                        adaptor_input = np.concatenate((original_action_prob, embeddings), axis=0)
+                        adaptor_input = np.concatenate((original_action_prob_flatten, embeddings), axis=0)
                     elif (adaptor_input_type == "original_selection"):
                         # Get original actor model action
                         original_action_prob = original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
