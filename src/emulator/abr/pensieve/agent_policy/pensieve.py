@@ -770,10 +770,10 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
             original_saver.restore(sess, original_actor_path)
             print("Original model restored.")
         
-        actor = a3c.ActorNetwork(sess, state_dim=EMBEDDING_SIZE+1,
+        actor = a3c.ActorNetwork(sess, state_dim=s_dim,
                                  action_dim=A_DIM, bitrate_dim=BITRATE_DIM,
                                  hidden_dim=adaptor_hidden_layer)
-        critic = a3c.CriticNetwork(sess, state_dim=EMBEDDING_SIZE+1,
+        critic = a3c.CriticNetwork(sess, state_dim=s_dim,
                                   learning_rate=CRITIC_LR_RATE,
                                   bitrate_dim=BITRATE_DIM,
                                   hidden_dim=adaptor_hidden_layer)
