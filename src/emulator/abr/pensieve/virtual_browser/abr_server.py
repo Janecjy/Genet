@@ -320,13 +320,13 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
     agent_id = os.path.basename(summary_dir).split("_")[1]
 
     with tf.Session() as sess ,open( log_file_path ,'wb' ) as log_file:
+        actor = None
 
         if abr == 'RobustMPC':
             abr = RobustMPC()
         elif abr == 'FastMPC':
             abr = FastMPC()
         elif abr == 'RL':
-            actor = None
             if adaptor_input == 'ACTION':
                 actor = ActorNetwork(sess,
                                     state_dim=rl_embedding.EMBEDDING_SIZE+1,
