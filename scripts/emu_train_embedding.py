@@ -24,7 +24,7 @@ username = "janechen"
 REDIS_PORT = 2666
 
 # Define possible configurations
-adaptor_inputs = ["original_action_prob", "original_selection", "original_bit_rate", "hidden_state"] #, "raw_state"]
+adaptor_inputs = ["original_selection", "original_action_prob", "original_bit_rate", "hidden_state"] #, "raw_state"]
 adaptor_hidden_layers = {
     "original_action_prob": [64, 128],
     "original_selection": [64, 128],

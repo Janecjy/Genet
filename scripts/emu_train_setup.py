@@ -150,10 +150,10 @@ def setup_server(server_config, server_index):
     #         # Add ddebs repository with correct evaluation of `lsb_release -cs`
             
     #     setup_commands.extend(bpftrace_commands)
-    scp_file(server)
 
     # Run setup commands
     run_remote_commands(server, setup_commands)
+    scp_file(server)
 
     print(f"Setup completed for {server}.")
 
