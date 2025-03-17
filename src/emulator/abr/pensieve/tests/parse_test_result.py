@@ -30,25 +30,26 @@ def reward_mean_std(directory, skip_header):
     mean = -1
     std = -1
     total_num = -1
-    print(directory)
-    print(skip_header)
+    # print(directory)
+    # print(skip_header)
     for root, dirs, files in os.walk(directory):
         for file in files:
             file_path = os.path.join(root, file)
-            if file_path.endswith("11") or file_path.endswith("167") or file_path.endswith("115") or file_path.endswith("14") or file_path.endswith("15"):
+            # if file_path.endswith("11") or file_path.endswith("167") or file_path.endswith("115") or file_path.endswith("14") or file_path.endswith("15"):
+            # if file_path.endswith("trace_0"):
                 # continue
-                try:
-                    mean, std, num = extract_reward(file_path, skip_header)
-                    rewards_means.append(mean)
-                except Exception as e:
-                    print(f"Error processing file {file_path}: {str(e)}")
+            try:
+                mean, std, num = extract_reward(file_path, skip_header)
+                rewards_means.append(mean)
+            except Exception as e:
+                print(f"Error processing file {file_path}: {str(e)}")
 
     # Calculate mean and standard deviation of the reward values
     if rewards_means:
         mean, std, total_num = calculate_mean_and_std(rewards_means)
         print(f"Average Mean reward: {mean}")
         print(f"Standard deviation of Mean reward: {std}")
-        print(f"Total num: {total_num}")
+        # print(f"Total num: {total_num}")
     else:
         print("No reward values found.")
 

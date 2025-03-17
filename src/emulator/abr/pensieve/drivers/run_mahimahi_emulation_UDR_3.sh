@@ -2,42 +2,20 @@
 set -e
 
 VIDEO_SIZE_DIR=pensieve/data/video_sizes
-# ACTOR_PATH=${ROOT}/results/7_dims_rand_large_range_correct_rebuf_penalty/even_udr_1_rand_interval/actor_ep_50000.pth
-#ACTOR_PATH=pensieve/data/mahimahi_new_best_models/UDR_3_model/nn_model_ep_200.ckpt
 ACTOR_PATH=$1
-#UP_LINK_SPEED_FILE=pensieve/data/12mbps
 UP_LINK_SPEED_FILE=/users/janechen/Genet/src/emulator/abr/pensieve/data/12mbps
-#TRACE_DIR=pensieve/data/trace_set_1/
 TRACE_DIR=$2
 SUMMARY_DIR_NAME=$3
 PORT_ID=$4
 AGENT_ID=$5
 ADAPTOR_INPUT=$6
-EXTRA_ARG=$7
+ADAPTOR_HIDDEN_SIZE=$7
+EXTRA_ARG=$8
 ORIGINAL_MODEL_PATH=/users/janechen/Genet/fig_reproduce/data/all_models/udr_3/nn_model_ep_58000.ckpt
-#CONFIG_FILE=pensieve/config/emulation/param_sweep.json
 CONFIG_FILE=/users/janechen/Genet/config/abr/udr3_emu_par.json
-
-# The architecture of emulation experiment.
-
-#     localhost                |                 mahimahi container(shell)
-#                              |
-#  HTTP File server <-----video data, bitrate -----> virtual browser (run html, javascript)
-#                              |                     ^
-#                              |                     |
-#                              |           state, bitrate decision
-#                              |                     |
-#                              |                     V
-#                              |               abr(RL, MPC) server
-
-# cd ${ROOT}/pensieve/video_server
-# python -m http.server &
-# cd ${ROOT}
 
 trap "pkill -f abr_server" SIGINT
 trap "pkill -f abr_server" EXIT
-# trap "pkill -f abr_server && pkill -f 'python -m http.server'" SIGINT
-# trap "pkill -f abr_server && pkill -f 'python -m http.server'" EXIT
 
 delay=40
 up_pkt_loss=0
@@ -47,45 +25,11 @@ trace_files=`ls ${TRACE_DIR}`
 
 echo -e "model_checkpoint_path: $1\n all_model_checkpoint_paths: $1" > ~/Genet/fig_reproduce/model/checkpoint
 
-#for buf_th in $(jq -r -c '.buffer_threshold.values[]' ${CONFIG_FILE}); do
- #   for delay in $(jq -r -c '.delay.values[]' ${CONFIG_FILE}); do
-  #      for up_pkt_loss in $(jq -r -c '.uplink_packet_loss_rate.values[]' ${CONFIG_FILE}); do
-   #         for down_pkt_loss in $(jq -r -c '.downlink_packet_loss_rate.values[]' ${CONFIG_FILE}); do
-                for trace_file in ${trace_files} ; do
-		                # trace_file=${UP_LINK_SPEED_FILE}
-                    # echo "${buffer_threshold} ${delay} ${up_pkt_loss} ${down_pkt_loss} ${TRACE_FILE}"
-                      mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
-                      mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \
-                      bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port ${PORT_ID} --abr RL --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir /mydata/results/${SUMMARY_DIR_NAME}/UDR-3_${AGENT_ID}_${buf_th}_${delay} --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322 --num-epochs=1 --run_time=0 --original-model-path ${ORIGINAL_MODEL_PATH} --adaptor-input ${ADAPTOR_INPUT} ${EXTRA_ARG}"
-
-#                      mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
-#                      mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \
-#                      bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port 8000 --abr RobustMPC --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir pensieve/tests/RL_${buf_th}_${delay}_${TRACE_DIR} --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322"
-
-  #                  mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
-   #                     mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}/${trace_file} -- \
-                      #  bash -c "python -m pensieve.virtual_browser.virtual_browser \
-                       #                 --ip \${MAHIMAHI_BASE} \
-                        #                --port 8000 \
-                         #               --abr RobustMPC \
-                          #              --video-size-file-dir ${VIDEO_SIZE_DIR} \
-                           #             --summary-dir pensieve/tests/mpc_${buf_th}_${delay}_${up_pkt_loss}_${down_pkt_loss} \
-                            #            --trace-file ${trace_file}"
-#                done
- #           done
-  #      done
-  #  done
+for trace_file in ${trace_files} ; do
+    mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
+    mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \
+    bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port ${PORT_ID} --abr RL \
+    --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir /mydata/results/${SUMMARY_DIR_NAME}/UDR-3_${AGENT_ID}_${buf_th}_${delay} \
+    --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322 --num-epochs=1 --run_time=0 \
+    --original-model-path ${ORIGINAL_MODEL_PATH} --adaptor-input ${ADAPTOR_INPUT} --adaptor-hidden-size ${ADAPTOR_HIDDEN_SIZE} ${EXTRA_ARG}"
 done
-        # pkill -f "python -m http.server"
-
-        # sleep 2
-        # mm-delay ${MM_DELAY} mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}/${TRACE_FILE} -- \
-        #     bash -c "python -m pensieve.abr_server --abr RobustMPC \
-        #                         --video-size-file-dir ${VIDEO_SIZE_DIR} \
-        #                         --summary-dir pensieve/tests/mpc_test \
-        #                         --trace-file ${TRACE_FILE} --actor-path ${ACTOR_PATH} &
-        #             abr_server_pid=\$! &&
-        #             python -m pensieve.virtual_browser --ip \${MAHIMAHI_BASE} --port 8000 --abr RL;
-        #             kill \${abr_server_pid} && echo kill\${abr_server_pid}"
-#     done
-# done

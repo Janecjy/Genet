@@ -130,7 +130,7 @@ class Pensieve():
         elif self.adaptor_input == "original_bit_rate":
             self.state_dim = 1 + EMBEDDING_SIZE
         elif self.adaptor_input == "hidden_state":
-            self.state_dim = HIDDEN_SIZE + EMBEDDING_SIZE
+            self.state_dim = 3 + EMBEDDING_SIZE
         else:
             self.state_dim = [S_INFO+EMBEDDING_SIZE, S_LEN] 
         # NOTE: this is required for the ``fork`` method to work
@@ -505,12 +505,38 @@ class Pensieve():
                     self.test_logger.info(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
                     adaptor_input = np.concatenate((original_hidden_flat, embeddings_flat))  # Shape: (128 + 16,) -> (144,)
                     # adaptor_input = np.concatenate((np.array([original_hidden]), embeddings), axis=0)
-                    self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")                    
-
-                    action_prob = self.net.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
+                elif self.adaptor_input == "original_action_prob":
+                    original_action_prob = self.original_actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
+                    original_action_prob_flatten = original_action_prob.flatten()  # Converts (1, 3) -> (3,)
+                    adaptor_input = np.concatenate((original_action_prob_flatten, embeddings), axis=0)
+                elif self.adaptor_input == "original_selection":
+                    # Get original actor model action
+                    original_action_prob = self.original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
+                    original_action_cumsum = np.cumsum( original_action_prob )
+                    original_selection = (original_action_cumsum > np.random.randint(
+                        1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
+                    adaptor_input = np.concatenate((np.array([original_selection]), embeddings), axis=0)
+                elif self.adaptor_input == "original_bit_rate":
+                    original_action_prob = self.original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
+                    original_action_cumsum = np.cumsum( original_action_prob )
+                    original_selection = (original_action_cumsum > np.random.randint(
+                        1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
+                    bit_rate = calculate_from_selection( original_selection ,last_bit_rate )
+                    adaptor_input = np.concatenate((np.array([bit_rate]), embeddings), axis=0)
+                elif self.adaptor_input == "hidden_state":
+                    original_hidden = self.original_actor.get_hidden(np.reshape(state, (1, S_INFO, S_LEN)))
+                    # Flatten the hidden state output
+                    original_hidden_flat = original_hidden.flatten()  # Converts (1, 128) -> (128,)
+                    # Flatten embeddings if necessary
+                    embeddings_flat = embeddings.flatten()  # Converts (16,) -> (16,)
+                    # print(f"original_bit_rate type: {type(original_bit_rate)}, shape: {np.shape(original_bit_rate)}")
+                    self.test_logger.info(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
+                    adaptor_input = np.concatenate((original_hidden_flat, embeddings_flat))
                 else:
                     self.test_logger.info("no adaptor")
                     action_prob = self.net.predict( np.reshape( state ,(1, S_INFO+EMBEDDING_SIZE, S_LEN) ) )
+                self.test_logger.info(f"adaptor_input: {adaptor_input}")                    
+                action_prob = self.net.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
         else:
             self.test_logger.info("no embedding")
             action_prob = self.net.predict( np.reshape( state ,(1, S_INFO, S_LEN) ) )

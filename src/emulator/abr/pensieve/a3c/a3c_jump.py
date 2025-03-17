@@ -84,9 +84,10 @@ class ActorNetwork(object):
             merge_net = tflearn.merge([split_0, split_1, split_2_flat, split_3_flat, split_4_flat, split_5], 'concat')
 
             dense_net_0 = tflearn.fully_connected(merge_net, 128, activation='relu')
-            out = tflearn.fully_connected(dense_net_0, self.a_dim, activation='softmax')
+            hidden = tflearn.fully_connected(dense_net_0, self.a_dim)
+            out = tflearn.activations.softmax(hidden)
 
-            return inputs, out, dense_net_0
+            return inputs, out, hidden
 
     def train(self, inputs, acts, act_grad_weights, entropy_weight):
 

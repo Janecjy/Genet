@@ -56,6 +56,8 @@ def parse_args():
                         help='Path to original RL model.')
     parser.add_argument('--adaptor-input', type=str, default=None,
                         help='Type of adaptor input.')
+    parser.add_argument('--adaptor-hidden-size', type=int, default=128,
+                        help='Hidden size of adaptor.')
 
     # data io related
     parser.add_argument('--summary-dir', type=str, required=True,
@@ -182,7 +184,7 @@ def main():
     tokens = None
     if args.use_embedding:
         embedding, tokens = rl_embedding.null_embedding_and_token()
-        video_server_proc, bpftrace_process = rl_embedding.launch_video_server_and_bftrace(agent_id, logger, run_video_server=False)
+        video_server_proc, bpftrace_process, video_server_port = rl_embedding.launch_video_server_and_bftrace(agent_id, logger, run_video_server=False)
     else:
         # Start bpftrace before ABR server
         trace_output = "bpftrace_output.txt"
@@ -204,6 +206,7 @@ def main():
             args.abr_server_port,
             args.original_model_path,
             args.adaptor_input,
+            args.adaptor_hidden_size,
             embedding,
             tokens,
         )
