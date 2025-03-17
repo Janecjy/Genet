@@ -86,12 +86,9 @@ class ActorNetwork(object):
             
             # Second fully connected layer
             net2 = tflearn.fully_connected(net1, self.hidden_dim, activation='relu')
-            
-            # Third fully connected layer
-            net3 = tflearn.fully_connected(net2, self.hidden_dim, activation='relu')
-            
+                        
             # Output layer with a_dim outputs, using softmax
-            out = tflearn.fully_connected(net3, self.a_dim, activation='softmax')
+            out = tflearn.fully_connected(net2, self.a_dim, activation='softmax')
             
             return inputs, out
 
@@ -198,12 +195,9 @@ class CriticNetwork(object):
             
             # Second fully connected layer
             net2 = tflearn.fully_connected(net1, self.hidden_dim, activation='relu')
-            
-            # Third fully connected layer
-            net3 = tflearn.fully_connected(net2, self.hidden_dim, activation='relu')
-            
+                        
             # Output layer with a_dim outputs, using softmax
-            out = tflearn.fully_connected(net3, 1, activation='linear')
+            out = tflearn.fully_connected(net2, 1, activation='linear')
 
             return inputs, out
 
