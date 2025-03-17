@@ -2,7 +2,7 @@
 
 # setup_conda
 # sample command  janechen@node1:~/Genet/src/emulator/abr$ 
-# ~/Genet/src/emulator/abr/pensieve/drivers/run_models.sh  ~/Genet/fig_reproduce/model/03_17_model_set/ ~/Genet/fig_reproduce/data/synthetic_test_plus_mahimahi/ 03_17_model_summary_subset 6626 0 --use_embedding > /mydata/logs/emu_test_03_17_model_subset.log
+# ~/Genet/src/emulator/abr/pensieve/drivers/run_models.sh  ~/Genet/fig_reproduce/model/03_17_model_set/ ~/Genet/fig_reproduce/data/synthetic_test_plus_mahimahi/ 03_17_model_summary 6626 0 --use_embedding > /mydata/logs/emu_test_03_17_model.log 2>&1
 
 MODEL_PARENT_PATH=$1
 TRACE_DIR=$2
@@ -12,7 +12,7 @@ AGENT_ID=$5
 EXTRA_ARG=$6
 
 # Define possible configurations
-adaptor_inputs=("original_action_prob" "original_selection" "original_bit_rate" "hidden_state")
+adaptor_inputs=("original_selection" "original_action_prob" "original_bit_rate" "hidden_state")
 adaptor_hidden_layers=(64 128 64 128 64 128 512 1024)
 
 # Check if the directory exists
@@ -26,7 +26,7 @@ trace_files=($(ls ${TRACE_DIR}/*))
 
 for trace in "${trace_files[@]}"; do
     echo "Processing trace: $trace"
-    temp_trace_dir="/mydata/temp_trace_dir"
+    temp_trace_dir="/mydata/temp_trace_dir/"
     
     # Create temp directory and copy trace file
     rm -rf "$temp_trace_dir"

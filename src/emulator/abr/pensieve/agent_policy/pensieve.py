@@ -509,21 +509,21 @@ class Pensieve():
                     original_action_prob = self.original_actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
                     original_action_prob_flatten = original_action_prob.flatten()  # Converts (1, 3) -> (3,)
                     adaptor_input = np.concatenate((original_action_prob_flatten, embeddings), axis=0)
-                elif self.adaptor_input_type == "original_selection":
+                elif self.adaptor_input == "original_selection":
                     # Get original actor model action
                     original_action_prob = self.original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
                     original_action_cumsum = np.cumsum( original_action_prob )
                     original_selection = (original_action_cumsum > np.random.randint(
                         1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
                     adaptor_input = np.concatenate((np.array([original_selection]), embeddings), axis=0)
-                elif self.adaptor_input_type == "original_bit_rate":
+                elif self.adaptor_input == "original_bit_rate":
                     original_action_prob = self.original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
                     original_action_cumsum = np.cumsum( original_action_prob )
                     original_selection = (original_action_cumsum > np.random.randint(
                         1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
                     bit_rate = calculate_from_selection( original_selection ,last_bit_rate )
                     adaptor_input = np.concatenate((np.array([bit_rate]), embeddings), axis=0)
-                elif self.adaptor_input_type == "hidden_state":
+                elif self.adaptor_input == "hidden_state":
                     original_hidden = self.original_actor.get_hidden(np.reshape(state, (1, S_INFO, S_LEN)))
                     # Flatten the hidden state output
                     original_hidden_flat = original_hidden.flatten()  # Converts (1, 128) -> (128,)

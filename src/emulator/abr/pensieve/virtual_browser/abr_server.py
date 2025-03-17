@@ -224,7 +224,7 @@ def make_request_handler(server_states):
                     if self.embedding is not None and self.tokens is not None:
                         use_embedding = True
                         redis_pipe.set(f"{self.agent_id}_use_embedding", int(True))
-                        self.embedding, self.tokens =  rl_embedding.transform_state_and_add_embedding(self.agent_id, state, self.embedding, self.tokens)
+                        state, self.embedding, self.tokens =  rl_embedding.transform_state_and_add_embedding(self.agent_id, state, self.embedding, self.tokens)
                         self.logger.info(f"Embedding transformed: {self.embedding}") 
                     
                     bit_rate = self.abr.select_action(

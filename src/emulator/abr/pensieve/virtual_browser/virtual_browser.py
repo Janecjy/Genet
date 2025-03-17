@@ -184,7 +184,7 @@ def main():
     tokens = None
     if args.use_embedding:
         embedding, tokens = rl_embedding.null_embedding_and_token()
-        video_server_proc, bpftrace_process = rl_embedding.launch_video_server_and_bftrace(agent_id, logger, run_video_server=False)
+        video_server_proc, bpftrace_process, video_server_port = rl_embedding.launch_video_server_and_bftrace(agent_id, logger, run_video_server=False)
     else:
         # Start bpftrace before ABR server
         trace_output = "bpftrace_output.txt"
