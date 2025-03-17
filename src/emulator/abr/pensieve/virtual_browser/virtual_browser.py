@@ -56,6 +56,8 @@ def parse_args():
                         help='Path to original RL model.')
     parser.add_argument('--adaptor-input', type=str, default=None,
                         help='Type of adaptor input.')
+    parser.add_argument('--adaptor-hidden-size', type=int, default=128,
+                        help='Hidden size of adaptor.')
 
     # data io related
     parser.add_argument('--summary-dir', type=str, required=True,
@@ -204,6 +206,7 @@ def main():
             args.abr_server_port,
             args.original_model_path,
             args.adaptor_input,
+            args.adaptor_hidden_size,
             embedding,
             tokens,
         )

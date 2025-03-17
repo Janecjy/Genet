@@ -312,7 +312,7 @@ def make_request_handler(server_states):
     return Request_Handler
 
 def run_abr_server(abr, trace_file, summary_dir, actor_path,
-                   video_size_file_dir, ip='localhost', port=8333, original_model_path=None, adaptor_input=None, embedding=None, tokens=None):
+                   video_size_file_dir, ip='localhost', port=8333, original_model_path=None, adaptor_input=None, hidden_size=128, embedding=None, tokens=None):
     print(f"Summary Directory {summary_dir}")
     os.makedirs(summary_dir, exist_ok=True)
     log_file_path = os.path.join(
@@ -331,12 +331,38 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
                 actor = ActorNetwork(sess,
                                     state_dim=rl_embedding.EMBEDDING_SIZE+1,
                                     action_dim=3,
-                                    bitrate_dim=len(VIDEO_BIT_RATE))
+                                    bitrate_dim=len(VIDEO_BIT_RATE),
+                                    hidden_dim=hidden_size)
             elif adaptor_input == 'HIDDEN':
                 actor = ActorNetwork(sess,
                                     state_dim=rl_embedding.EMBEDDING_SIZE+rl_embedding.HIDDEN_SIZE,
                                     action_dim=3,
-                                    bitrate_dim=len(VIDEO_BIT_RATE))
+                                    bitrate_dim=len(VIDEO_BIT_RATE),
+                                    hidden_dim=hidden_size)
+            elif adaptor_input == "original_action_prob":
+                actor = ActorNetwork(sess,
+                                    state_dim=3+rl_embedding.EMBEDDING_SIZE,
+                                    action_dim=3,
+                                    bitrate_dim=len(VIDEO_BIT_RATE),
+                                    hidden_dim=hidden_size)
+            elif adaptor_input == "original_selection":
+                actor = ActorNetwork(sess,
+                                    state_dim=1+rl_embedding.EMBEDDING_SIZE,
+                                    action_dim=3,
+                                    bitrate_dim=len(VIDEO_BIT_RATE),
+                                    hidden_dim=hidden_size)
+            elif adaptor_input == "original_bit_rate":
+                actor = ActorNetwork(sess,
+                                    state_dim=1+rl_embedding.EMBEDDING_SIZE,
+                                    action_dim=3,
+                                    bitrate_dim=len(VIDEO_BIT_RATE),
+                                    hidden_dim=hidden_size)
+            elif adaptor_input == "hidden_state":
+                actor = ActorNetwork(sess,
+                                    state_dim=rl_embedding.HIDDEN_SIZE+rl_embedding.EMBEDDING_SIZE,
+                                    action_dim=3,
+                                    bitrate_dim=len(VIDEO_BIT_RATE),
+                                    hidden_dim=hidden_size)
 
             original_actor = OriginalActorNetwork( sess ,
                                 state_dim=[S_INFO ,S_LEN] ,action_dim=3 ,
@@ -355,7 +381,7 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
                 print(f"Restoring OriginalActorNetwork model from {original_model_path}")
                 original_actor_saver.restore(sess, original_model_path)
             # assert actor_path is not None, "actor-path is needed for RL abr."
-            abr = Pensieve(16, summary_dir, actor=actor, original_actor=original_actor, model_save_interval=100, adaptor_input=adaptor_input)
+            abr = Pensieve(16, summary_dir, actor=actor, original_actor=original_actor, model_save_interval=100, adaptor_input=adaptor_input, adaptor_hidden_layer=hidden_size)
         elif abr == 'BufferBased':
             abr = BufferBased()
         elif abr == 'RLTrain':
