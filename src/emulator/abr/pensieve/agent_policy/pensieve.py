@@ -130,7 +130,7 @@ class Pensieve():
         elif self.adaptor_input == "original_bit_rate":
             self.state_dim = 1 + EMBEDDING_SIZE
         elif self.adaptor_input == "hidden_state":
-            self.state_dim = HIDDEN_SIZE + EMBEDDING_SIZE
+            self.state_dim = 3 + EMBEDDING_SIZE
         else:
             self.state_dim = [S_INFO+EMBEDDING_SIZE, S_LEN] 
         # NOTE: this is required for the ``fork`` method to work
