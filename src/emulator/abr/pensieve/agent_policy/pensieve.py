@@ -93,6 +93,28 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
 
     return logger
 
+def one_hot_encode(index, num_classes):
+    """
+    Given an integer `index` in [0, num_classes-1],
+    return a 1D array of length `num_classes` with a 1 at `index` and 0 elsewhere.
+    """
+    one_hot = np.zeros(num_classes, dtype=np.float32)
+    one_hot[index] = 1.0
+    return one_hot
+
+def min_max_normalize(arr):
+    """
+    Min-max normalize a 1D numpy array to [0, 1].
+    If max_val == min_val, returns `arr` unchanged (to avoid division by zero).
+    """
+    arr_min = arr.min()
+    arr_max = arr.max()
+    diff = arr_max - arr_min
+    if abs(diff) < 1e-12:
+        # Edge case: all elements are the same
+        return arr
+    return (arr - arr_min) / diff
+
 
 class Pensieve():
     """Pensieve Implementation.
@@ -469,6 +491,7 @@ class Pensieve():
         if use_embedding:
             self.test_logger.info("use embedding")
             if self.adaptor_input is not None:
+                # Branch 1: ACTION (kept for the existing action adaptor)
                 if self.adaptor_input == "ACTION":
                     self.test_logger.info("action adaptor")
                     original_action_prob = self.original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
@@ -489,62 +512,88 @@ class Pensieve():
                     bit_rate = calculate_from_selection(selection, original_bit_rate)
                     self.test_logger.info("Select action with actor adaptor - original_bit_rate: {}, bit_rate: {}".format(original_bit_rate, bit_rate))
                     return bit_rate
-                elif self.adaptor_input == "HIDDEN":
+                
+                # Before any other branches, flatten + normalize embeddings
+                embeddings_flat = embeddings.flatten()  
+                embeddings_norm = min_max_normalize(embeddings_flat)
+
+                # Branch 2: HIDDEN
+                # (same logic will also apply to hidden_state, see below)
+                if self.adaptor_input == "hidden_state":
                     self.test_logger.info("hidden adaptor")
-                    original_hidden =  self.original_actor.get_hidden(np.reshape(state, (1, S_INFO, S_LEN)))
-
-                    # Flatten the hidden state output
-                    original_hidden_flat = original_hidden.flatten()  # Converts (1, 128) -> (128,)
-
-                    self.test_logger.info(f"Original hidden: {original_hidden.shape}")
                     
-                    # Flatten embeddings if necessary
-                    embeddings_flat = embeddings.flatten()  # Converts (16,) -> (16,)
+                    # Get the hidden state from the original actor
+                    original_hidden = self.original_actor.get_hidden(
+                        np.reshape(state, (1, S_INFO, S_LEN))
+                    )  # shape e.g. (1, 128)
                     
-                    # print(f"original_bit_rate type: {type(original_bit_rate)}, shape: {np.shape(original_bit_rate)}")
-                    self.test_logger.info(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
-                    adaptor_input = np.concatenate((original_hidden_flat, embeddings_flat))  # Shape: (128 + 16,) -> (144,)
-                    # adaptor_input = np.concatenate((np.array([original_hidden]), embeddings), axis=0)
+                    # Flatten + min–max normalize
+                    original_hidden_flat = original_hidden.flatten()
+                    original_hidden_flat_norm = min_max_normalize(original_hidden_flat)
+                    
+                    # Concat hidden + embeddings
+                    adaptor_input = np.concatenate((original_hidden_flat_norm, embeddings_norm))
+                    self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
+
+                # Branch 3: original_action_prob (min–max normalize raw probabilities)
                 elif self.adaptor_input == "original_action_prob":
-                    original_action_prob = self.original_actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
-                    original_action_prob_flatten = original_action_prob.flatten()  # Converts (1, 3) -> (3,)
-                    adaptor_input = np.concatenate((original_action_prob_flatten, embeddings), axis=0)
+                    original_action_prob = self.original_actor.predict(
+                        np.reshape(state, (1, S_INFO, S_LEN))
+                    )  # shape: (1, 3)
+                    original_action_prob_flat = original_action_prob.flatten()  # shape: (3,)
+                    
+                    # Min–max normalize the probabilities
+                    original_action_prob_norm = min_max_normalize(original_action_prob_flat)
+                    
+                    # Concat with normalized embeddings
+                    adaptor_input = np.concatenate((original_action_prob_norm, embeddings_norm), axis=0)
+                    self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
+
+                # Branch 4: original_selection (one‐hot encode the selection)
                 elif self.adaptor_input == "original_selection":
-                    # Get original actor model action
-                    original_action_prob = self.original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
-                    original_action_cumsum = np.cumsum( original_action_prob )
-                    original_selection = (original_action_cumsum > np.random.randint(
-                        1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
-                    adaptor_input = np.concatenate((np.array([original_selection]), embeddings), axis=0)
+                    original_action_prob = self.original_actor.predict(
+                        np.reshape(state, (1, S_INFO, S_LEN))
+                    )
+                    original_action_cumsum = np.cumsum(original_action_prob)
+                    original_selection = (original_action_cumsum >
+                        np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+                    
+                    # Suppose we have 3 possible actions. One-hot encode:
+                    # If your real actions are -1,0,1 → map them to 0,1,2
+                    original_selection_one_hot = one_hot_encode(original_selection, 3)
+                    
+                    # Concat with normalized embeddings
+                    adaptor_input = np.concatenate((original_selection_one_hot, embeddings_norm), axis=0)
+                    self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
+
+                # Branch 5: original_bit_rate (one‐hot encode the resulting bit rate)
                 elif self.adaptor_input == "original_bit_rate":
-                    original_action_prob = self.original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
-                    original_action_cumsum = np.cumsum( original_action_prob )
-                    original_selection = (original_action_cumsum > np.random.randint(
-                        1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
-                    bit_rate = calculate_from_selection( original_selection ,last_bit_rate )
-                    adaptor_input = np.concatenate((np.array([bit_rate]), embeddings), axis=0)
-                elif self.adaptor_input == "hidden_state":
-                    original_hidden = self.original_actor.get_hidden(np.reshape(state, (1, S_INFO, S_LEN)))
-                    # Flatten the hidden state output
-                    original_hidden_flat = original_hidden.flatten()  # Converts (1, 128) -> (128,)
-                    # Flatten embeddings if necessary
-                    embeddings_flat = embeddings.flatten()  # Converts (16,) -> (16,)
-                    # print(f"original_bit_rate type: {type(original_bit_rate)}, shape: {np.shape(original_bit_rate)}")
-                    self.test_logger.info(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
-                    adaptor_input = np.concatenate((original_hidden_flat, embeddings_flat))
+                    original_action_prob = self.original_actor.predict(
+                        np.reshape(state, (1, S_INFO, S_LEN))
+                    )
+                    original_action_cumsum = np.cumsum(original_action_prob)
+                    original_selection = (original_action_cumsum >
+                        np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+                    
+                    # Convert selection → bit_rate in [0..5] or similar
+                    bit_rate = calculate_from_selection(original_selection, last_bit_rate)
+                    
+                    # One-hot encode bit_rate across 6 possible levels
+                    bit_rate_one_hot = one_hot_encode(bit_rate, 6)
+                    
+                    # Concat with normalized embeddings
+                    adaptor_input = np.concatenate((bit_rate_one_hot, embeddings_norm), axis=0)
+                    self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
+                # If no known adaptor, just pass the state + embedding directly to net
                 else:
                     self.test_logger.info("no adaptor")
-                    action_prob = self.net.predict( np.reshape( state ,(1, S_INFO+EMBEDDING_SIZE, S_LEN) ) )
-                self.test_logger.info(f"adaptor_input: {adaptor_input}")                    
-                action_prob = self.net.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
-        else:
-            self.test_logger.info("no embedding")
-            action_prob = self.net.predict( np.reshape( state ,(1, S_INFO, S_LEN) ) )
-        action_cumsum = np.cumsum( action_prob )
+        action_prob = self.net.predict(np.reshape(state, (1, S_INFO, S_LEN)))
+        action_cumsum = np.cumsum(action_prob)
         selection = (action_cumsum > np.random.randint(
-            1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
-        bit_rate = self.calculate_from_selection( selection ,last_bit_rate )
+            1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+        bit_rate = calculate_from_selection(selection, last_bit_rate)
         return bit_rate
+
 
     def evaluate(self, net_env, save_dir=None):
         torch.set_num_threads(1)
@@ -893,33 +942,70 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                 if recv_state:
                     state, embeddings, tokens = rl_embedding.transform_state_and_add_embedding(agent_id, state, embeddings, tokens)                    
                     r_batch.append(reward)
-                    if (adaptor_input_type == "original_action_prob"):
-                        original_action_prob = original_actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
-                        original_action_prob_flatten = original_action_prob.flatten()  # Converts (1, 3) -> (3,)
-                        adaptor_input = np.concatenate((original_action_prob_flatten, embeddings), axis=0)
+
+                    # First, min-max normalize embeddings to [0,1].
+                    # If embeddings is already 1D, great; if 2D, flatten or adapt as needed.
+                    embeddings = embeddings.flatten()  # If needed, make sure it's 1D
+                    embeddings_norm = min_max_normalize(embeddings)
+
+                    # We'll reshape the input state for the original actor
+                    reshaped_state = np.reshape(state, (1, S_INFO, S_LEN))
+
+                    if adaptor_input_type == "original_action_prob":
+                        # 1) Get the raw action probabilities (shape: (1, 3))
+                        original_action_prob = original_actor.predict(reshaped_state)
+                        # 2) Flatten to (3,)
+                        original_action_prob_flat = original_action_prob.flatten()
+                        # 3) Min-max normalize the probabilities
+                        original_action_prob_norm = min_max_normalize(original_action_prob_flat)
+                        # 4) Concatenate with normalized embeddings
+                        adaptor_input = np.concatenate((original_action_prob_norm, embeddings_norm), axis=0)
+
+
                     elif (adaptor_input_type == "original_selection"):
-                        # Get original actor model action
-                        original_action_prob = original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
-                        original_action_cumsum = np.cumsum( original_action_prob )
-                        original_selection = (original_action_cumsum > np.random.randint(
-                            1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
-                        adaptor_input = np.concatenate((np.array([original_selection]), embeddings), axis=0)
+                        # 1) Get the raw probabilities
+                        original_action_prob = original_actor.predict(reshaped_state)
+                        original_action_cumsum = np.cumsum(original_action_prob)
+                        # 2) Sample an action from these probabilities
+                        original_selection = (original_action_cumsum >
+                                            np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+                        # 3) One-hot encode the selection ∈ {0,1,2}
+                        #    If your actual actions are [-1, 0, 1], be sure to map them consistently.
+                        #    E.g., -1 -> index 0, 0 -> index 1, 1 -> index 2
+                        original_selection_one_hot = one_hot_encode(original_selection, 3)
+
+                        # 4) Concatenate with normalized embeddings
+                        adaptor_input = np.concatenate((original_selection_one_hot, embeddings_norm), axis=0)
+
                     elif (adaptor_input_type == "original_bit_rate"):
-                        original_action_prob = original_actor.predict( np.reshape( state ,(1 ,S_INFO ,S_LEN) ) )
-                        original_action_cumsum = np.cumsum( original_action_prob )
-                        original_selection = (original_action_cumsum > np.random.randint(
-                            1 ,RAND_RANGE ) / float( RAND_RANGE )).argmax()
-                        bit_rate = calculate_from_selection( original_selection ,last_bit_rate )
-                        adaptor_input = np.concatenate((np.array([bit_rate]), embeddings), axis=0)
+                        # 1) Get the raw probabilities
+                        original_action_prob = original_actor.predict(reshaped_state)
+                        original_action_cumsum = np.cumsum(original_action_prob)
+                        # 2) Sample an action for selection
+                        original_selection = (original_action_cumsum >
+                                            np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+                        # 3) Convert that selection to a bit_rate in {0,1,2,3,4,5} 
+                        bit_rate = calculate_from_selection(original_selection, last_bit_rate)
+                        # 4) One-hot encode bit_rate ∈ {0..5}
+                        bit_rate_one_hot = one_hot_encode(bit_rate, 6)
+
+                        # 5) Concatenate with normalized embeddings
+                        adaptor_input = np.concatenate((bit_rate_one_hot, embeddings_norm), axis=0)
+
                     elif (adaptor_input_type == "hidden_state"):
-                        original_hidden = original_actor.get_hidden(np.reshape(state, (1, S_INFO, S_LEN)))
-                        # Flatten the hidden state output
-                        original_hidden_flat = original_hidden.flatten()  # Converts (1, 128) -> (128,)
-                        # Flatten embeddings if necessary
-                        embeddings_flat = embeddings.flatten()  # Converts (16,) -> (16,)
-                        # print(f"original_bit_rate type: {type(original_bit_rate)}, shape: {np.shape(original_bit_rate)}")
-                        agent_logger.info(f"embeddings type: {type(embeddings)}, shape: {embeddings.shape}")
-                        adaptor_input = np.concatenate((original_hidden_flat, embeddings_flat))
+                        # 1) Retrieve and flatten the hidden state
+                        original_hidden = original_actor.get_hidden(reshaped_state)  # shape: (1, 128) in your example
+                        original_hidden_flat = original_hidden.flatten()             # shape: (128,)
+
+                        # 2) Min-max normalize the hidden state
+                        original_hidden_flat_norm = min_max_normalize(original_hidden_flat)
+
+                        # 3) Flatten & min-max normalize embeddings if necessary (done above)
+                        #    We already have `embeddings_norm`.
+
+                        # 4) Concatenate them
+                        adaptor_input = np.concatenate((original_hidden_flat_norm, embeddings_norm))
+
 
                     agent_logger.info(f"[Agent {agent_id}] Adaptor input shape: {adaptor_input.shape}")
                     action_prob = actor.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
