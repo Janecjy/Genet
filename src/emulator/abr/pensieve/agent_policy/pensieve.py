@@ -148,9 +148,9 @@ class Pensieve():
         if self.adaptor_input == "original_action_prob":
             self.state_dim = 3 + EMBEDDING_SIZE
         elif self.adaptor_input == "original_selection":
-            self.state_dim = 1 + EMBEDDING_SIZE
+            self.state_dim = 3 + EMBEDDING_SIZE
         elif self.adaptor_input == "original_bit_rate":
-            self.state_dim = 1 + EMBEDDING_SIZE
+            self.state_dim = 6 + EMBEDDING_SIZE
         elif self.adaptor_input == "hidden_state":
             self.state_dim = 3 + EMBEDDING_SIZE
         else:

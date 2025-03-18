@@ -1,60 +1,172 @@
 servers:
-  - hostname: clnode166.clemson.cloudlab.us
+  # --- Set 1 (Clemson, first group) ---
+  - hostname: clnode036.clemson.cloudlab.us
     branch: unum-adaptor
     redis: true
     run: true
     redis_ip: 10.10.1.1
 
-  - hostname: clnode036.clemson.cloudlab.us
+  - hostname: clnode159.clemson.cloudlab.us
     branch: unum-adaptor
     redis: true
-    run: false
+    run: true
     redis_ip: 10.10.1.2
 
-  - hostname: clnode007.clemson.cloudlab.us
+  - hostname: clnode023.clemson.cloudlab.us
     branch: unum-adaptor
     redis: true
-    run: false
+    run: true
     redis_ip: 10.10.1.3
-
-  # - hostname: clstore04.clemson.cloudlab.us
-  #   branch: unum-adaptor
-  #   redis: true
-  #   run: false
-  #   redis_ip: 10.10.1.4
-
-  # - hostname: clstore02.clemson.cloudlab.us
-  #   branch: unum-adaptor
-  #   redis: true
-  #   run: false
-  #   redis_ip: 10.10.1.5
-
-  - hostname: clnode165.clemson.cloudlab.us
-    branch: unum-adaptor
-    redis: true
-    run: false
-    redis_ip: 10.10.1.6
 
   - hostname: clnode189.clemson.cloudlab.us
     branch: unum-adaptor
     redis: true
-    run: false
-    redis_ip: 10.10.1.7
+    run: true
+    redis_ip: 10.10.1.4
+
+  - hostname: clnode171.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.5
 
   - hostname: clnode034.clemson.cloudlab.us
     branch: unum-adaptor
     redis: true
-    run: false
+    run: true
+    redis_ip: 10.10.1.6
+
+  # --- Set 2 (Wisconsin, first group) ---
+  - hostname: sm110p-10s10611.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.1
+
+  - hostname: sm110p-10s10619.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.2
+
+  # --- Set 3 (Clemson, second group) ---
+  - hostname: clnode153.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.1
+
+  - hostname: clnode125.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.2
+
+  - hostname: clnode251.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.3
+
+  - hostname: clnode151.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.4
+
+  - hostname: clnode228.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.5
+
+  - hostname: clnode163.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.6
+
+  - hostname: clnode106.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.7
+
+  - hostname: clnode100.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
     redis_ip: 10.10.1.8
 
   - hostname: clnode099.clemson.cloudlab.us
     branch: unum-adaptor
     redis: true
-    run: false
+    run: true
     redis_ip: 10.10.1.9
 
-  - hostname: clnode023.clemson.cloudlab.us
+  - hostname: clnode072.clemson.cloudlab.us
     branch: unum-adaptor
     redis: true
-    run: false
+    run: true
+    redis_ip: 10.10.1.10
+
+  # --- Set 4 (Wisconsin, second group) ---
+  - hostname: c220g1-031116.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.1
+
+  - hostname: c220g1-031114.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.2
+
+  - hostname: c220g1-031122.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.3
+
+  - hostname: c220g1-031115.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.4
+
+  - hostname: c220g1-031126.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.5
+
+  - hostname: c220g2-011122.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.6
+
+  - hostname: c220g5-111324.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.7
+
+  - hostname: c220g1-030807.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.8
+
+  - hostname: c220g5-111331.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
+    redis_ip: 10.10.1.9
+
+  - hostname: c220g5-111328.wisc.cloudlab.us
+    branch: unum-adaptor
+    redis: true
+    run: true
     redis_ip: 10.10.1.10

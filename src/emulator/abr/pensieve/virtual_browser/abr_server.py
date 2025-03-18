@@ -347,13 +347,13 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
                                     hidden_dim=hidden_size)
             elif adaptor_input == "original_selection":
                 actor = ActorNetwork(sess,
-                                    state_dim=1+rl_embedding.EMBEDDING_SIZE,
+                                    state_dim=3+rl_embedding.EMBEDDING_SIZE,
                                     action_dim=3,
                                     bitrate_dim=len(VIDEO_BIT_RATE),
                                     hidden_dim=hidden_size)
             elif adaptor_input == "original_bit_rate":
                 actor = ActorNetwork(sess,
-                                    state_dim=1+rl_embedding.EMBEDDING_SIZE,
+                                    state_dim=6+rl_embedding.EMBEDDING_SIZE,
                                     action_dim=3,
                                     bitrate_dim=len(VIDEO_BIT_RATE),
                                     hidden_dim=hidden_size)
