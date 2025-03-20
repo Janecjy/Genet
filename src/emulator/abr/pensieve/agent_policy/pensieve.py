@@ -587,7 +587,7 @@ class Pensieve():
                 # If no known adaptor, just pass the state + embedding directly to net
                 else:
                     self.test_logger.info("no adaptor")
-        action_prob = self.net.predict(np.reshape(state, (1, S_INFO, S_LEN)))
+        action_prob = self.net.predict(adaptor_input.reshape(1, -1))
         action_cumsum = np.cumsum(action_prob)
         selection = (action_cumsum > np.random.randint(
             1, RAND_RANGE) / float(RAND_RANGE)).argmax()
