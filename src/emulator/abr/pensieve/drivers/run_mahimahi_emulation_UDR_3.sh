@@ -3,10 +3,10 @@ set -e
 
 VIDEO_SIZE_DIR=pensieve/data/video_sizes
 # ACTOR_PATH=${ROOT}/results/7_dims_rand_large_range_correct_rebuf_penalty/even_udr_1_rand_interval/actor_ep_50000.pth
-ACTOR_PATH=pensieve/data/mahimahi_new_best_models/UDR_3_model/nn_model_ep_200.ckpt
-UP_LINK_SPEED_FILE=pensieve/data/12mbps
-TRACE_DIR=pensieve/data/trace_set_1/
-CONFIG_FILE=pensieve/config/emulation/param_sweep.json
+ACTOR_PATH=/users/janechen/Genet/fig_reproduce/data/all_models/udr_3/nn_model_ep_58000.ckpt
+UP_LINK_SPEED_FILE=/users/janechen/Genet/src/emulator/abr/pensieve/data/12mbps
+TRACE_DIR=/users/janechen/Genet/fig_reproduce/data/synthetic_test_plus_mahimahi
+CONFIG_FILE=/users/janechen/Genet/config/abr/udr3_emu_par.json
 
 # The architecture of emulation experiment.
 
