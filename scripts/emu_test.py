@@ -74,7 +74,7 @@ def start_remote_test(server, start_id=None, end_id=None):
         # Commands to run before starting tmux
         commands = [
             "tmux kill-server || true",
-            "rm -rf /mydata/*",
+            "rm -rf /mydata/logs/*",
             "mkdir -p /mydata/logs",
             f"cd {GENET_BASE_PATH} && git reset --hard && git fetch && git checkout {branch} && git pull",
             f"grep -rl --include='*.py' '10.10.1.2' {GENET_BASE_PATH}/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.2/{redis_ip}/g' || true",
@@ -107,6 +107,7 @@ def start_remote_test(server, start_id=None, end_id=None):
 
         # Execute each command over SSH
         for cmd in commands:
+            print("Executing command:", cmd)
             stdin, stdout, stderr = client.exec_command(cmd)
             out = stdout.read().decode()
             err = stderr.read().decode()
