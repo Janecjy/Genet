@@ -1,0 +1,15 @@
+test_servers:
+  - hostname: clnode040.clemson.cloudlab.us
+    branch: sim-reproduce
+    redis_ip: 10.10.1.1
+    redis: false
+
+  - hostname: clnode009.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis_ip: 10.10.1.2
+    redis: true
+
+  - hostname: clstore04.clemson.cloudlab.us
+    branch: unum-adaptor
+    redis_ip: 10.10.1.3
+    redis: true
