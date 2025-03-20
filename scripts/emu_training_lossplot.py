@@ -5,34 +5,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import yaml
-import argparse
-import time
 
-# Parse command-line arguments
-parser = argparse.ArgumentParser(description="Plot training loss and fetch plots from remote servers")
-args = parser.parse_args()
+# Load server addresses from config.yaml
+CONFIG_FILE = "config.yaml"
 
-# Define the server list in order
-server_list = [
-    "sm110p-10s10611.wisc.cloudlab.us",
-    "sm110p-10s10619.wisc.cloudlab.us",
-    "clnode036.clemson.cloudlab.us",
-    "clnode159.clemson.cloudlab.us",
-    "clnode023.clemson.cloudlab.us",
-    "clnode109.clemson.cloudlab.us",
-    "clnode171.clemson.cloudlab.us",
-    "clnode034.clemson.cloudlab.us",
-    "c220g1-031126.wisc.cloudlab.us",
-    "c220g1-031122.wisc.cloudlab.us",
-    "c220g1-031114.wisc.cloudlab.us",
-    "c220g1-031116.wisc.cloudlab.us",
-    "c220g1-031115.wisc.cloudlab.us",
-    "c220g5-110914.wisc.cloudlab.us",
-    "c240g5-110213.wisc.cloudlab.us",
-    "c240g5-110211.wisc.cloudlab.us",
-    "c220g5-120115.wisc.cloudlab.us",
-    "c220g5-110427.wisc.cloudlab.us"
-]
+with open(CONFIG_FILE, "r") as file:
+    config = yaml.safe_load(file)
+
+# Extract server hostnames
+servers = [server["hostname"] for server in config["servers"]]
 
 username = "janechen"
 REMOTE_LOG_DIR = "/mydata/results/abr/udr3_emu_par_emulation/"
@@ -133,7 +114,7 @@ def fetch_and_plot(server, server_idx):
         client.close()
 
 # Process all servers in order
-for i, server in enumerate(server_list):
+for i, server in enumerate(servers):
     fetch_and_plot(server, i + 1)
 
 print("All plots have been fetched successfully.")
