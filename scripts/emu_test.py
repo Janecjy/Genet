@@ -32,6 +32,7 @@ TRACE_DIR = f"{GENET_BASE_PATH}/fig_reproduce/data/synthetic_test_plus_mahimahi/
 SUMMARY_DIR = args.model_dir_name  # Same as model directory name
 PORT_ID = "6626"
 AGENT_ID = "0"
+SEED = "0"
 EXTRA_ARGS = "--use_embedding"
 LOG_PATH = f"/mydata/logs/emu_test_{args.model_dir_name}.log"  # Log name matches model dir
 
@@ -99,7 +100,7 @@ def start_remote_test(server, start_id=None, end_id=None):
         elif start_id and end_id:
             commands.append(
                 f"tmux send-keys -t {tmux_session_name}:{test_window} "
-                f"'bash {TEST_SCRIPT_PATH} {MODEL_PATH} {TRACE_DIR} {SUMMARY_DIR} {PORT_ID} {AGENT_ID} {EXTRA_ARGS} {start_id} {end_id}' C-m"
+                f"'bash {TEST_SCRIPT_PATH} {MODEL_PATH} {TRACE_DIR} {SUMMARY_DIR} {PORT_ID} {AGENT_ID} {EXTRA_ARGS} {SEED} {start_id} {end_id}' C-m"
             )
 
         commands.append("tmux ls")
