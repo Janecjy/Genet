@@ -7,27 +7,31 @@ import argparse
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Setup Genet on remote servers")
+parser.add_argument("--mode", choices=["train", "test"], required=True, help="Specify 'train' or 'test' mode")
 args = parser.parse_args()
 
-# Load configuration from YAML file
-CONFIG_FILE = "config.yaml"
+# Select configuration based on mode
+if args.mode == "train":
+    CONFIG_FILE = "config.yaml"
+    SCP_EXTRA_PATH = None  # No extra SCP in training mode
+elif args.mode == "test":
+    CONFIG_FILE = "testconfig.yaml"
+    SCP_EXTRA_PATH = "/home/jane/Genet/fig_reproduce/data/synthetic_test_plus_mahimahi"
 
 with open(CONFIG_FILE, "r") as file:
     config = yaml.safe_load(file)
 
-servers = config["servers"]
+servers = config["servers" if args.mode == "train" else "test_servers"]
 username = "janechen"
 
-# Paths for local and remote chromedriver
+# Paths for local and remote setup
 LOCAL_CHROMEDRIVER_PATH = "/home/jane/Desktop/Checkpoint-Combined_10RTT_6col_Transformer3_64_5_5_16_4_lr_1e-05-999iter.p"
 REMOTE_CHROMEDRIVER_PATH = "/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/"
+REDIS_PORT = 2666  # Change if needed
 
-# Set custom Redis port
-REDIS_PORT = 2666  # Change this if needed
-
-def scp_file(server):
-    """ SCP the chromedriver file to the remote server """
-    print(f"Transferring chromedriver to {server}...")
+def scp_files(server):
+    """SCP files to the remote server (chromedriver + test traces if needed)"""
+    print(f"Transferring files to {server}...")
 
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -36,23 +40,31 @@ def scp_file(server):
         client.connect(server, username=username)
         sftp = client.open_sftp()
 
-        # Ensure the remote directory exists
+        # Ensure remote directories exist
         try:
             sftp.stat(REMOTE_CHROMEDRIVER_PATH)
         except FileNotFoundError:
             sftp.mkdir(REMOTE_CHROMEDRIVER_PATH)
 
+        # Transfer chromedriver file
         sftp.put(LOCAL_CHROMEDRIVER_PATH, os.path.join(REMOTE_CHROMEDRIVER_PATH, os.path.basename(LOCAL_CHROMEDRIVER_PATH)))
-        print(f"File successfully transferred to {server}:{REMOTE_CHROMEDRIVER_PATH}")
+        print(f"Chromedriver successfully transferred to {server}:{REMOTE_CHROMEDRIVER_PATH}")
+
+        # Transfer Mahimahi traces in test mode
+        if SCP_EXTRA_PATH:
+            print(f"Transferring Mahimahi traces to {server}...")
+            remote_data_path = "/users/janechen/Genet/fig_reproduce/data/"
+            os.system(f"scp -r {SCP_EXTRA_PATH} {username}@{server}:{remote_data_path}")
+            print(f"Mahimahi traces successfully transferred to {server}")
 
         sftp.close()
     except Exception as e:
-        print(f"Error transferring chromedriver to {server}: {e}")
+        print(f"Error transferring files to {server}: {e}")
     finally:
         client.close()
 
 def run_remote_commands(server, commands):
-    """ SSH into the server and execute the given commands """
+    """SSH into the server and execute the given commands"""
     print(f"Connecting to {server}...")
 
     client = paramiko.SSHClient()
@@ -71,14 +83,11 @@ def run_remote_commands(server, commands):
         client.close()
 
 def setup_server(server_config, server_index):
-    """ Run full setup process for a single server in parallel """
+    """Run setup process for a single server in parallel"""
     server = server_config["hostname"]
     branch = server_config["branch"]
     redis_node = server_config["redis"]
     redis_ip = server_config["redis_ip"]
-
-    # Define Redis IP based on server index (starting from 1)
-    # redis_ip = f"10.10.1.{server_index + 1}"
 
     setup_commands = [
         "sudo DEBIAN_FRONTEND=noninteractive apt-get update -y",
@@ -140,27 +149,20 @@ def setup_server(server_config, server_index):
     if redis_node:
         redis_commands = [
             f"tmux new-session -d -s redis 'redis-server --port {REDIS_PORT} --bind {redis_ip} --protected-mode no'",
-            f"echo 'Redis started on {redis_ip}:{REDIS_PORT} in tmux session on {server}'"
+            f"echo 'Redis started on {redis_ip}:{REDIS_PORT} on {server}'"
         ]
         setup_commands.extend(redis_commands)
-    
-    # If the branch is `network-state`, add additional setup commands
-    # if branch == "network-state":
-    #     bpftrace_commands = [
-    #         # Add ddebs repository with correct evaluation of `lsb_release -cs`
-            
-    #     setup_commands.extend(bpftrace_commands)
 
     # Run setup commands
     run_remote_commands(server, setup_commands)
-    scp_file(server)
+    scp_files(server)
 
     print(f"Setup completed for {server}.")
 
 # Run setup on all servers in parallel
 with concurrent.futures.ThreadPoolExecutor(max_workers=len(servers)) as executor:
     futures = {executor.submit(setup_server, server_config, i): server_config["hostname"] for i, server_config in enumerate(servers)}
-    
+
     for future in concurrent.futures.as_completed(futures):
         server = futures[future]
         try:
@@ -168,4 +170,4 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=len(servers)) as executor
         except Exception as e:
             print(f"Error setting up {server}: {e}")
 
-print("Setup completed on all servers.")
+print(f"Setup completed on all {'training' if args.mode == 'train' else 'testing'} servers.")
