@@ -78,12 +78,14 @@ done
 
 # Step 2: Remove existing models on test nodes before copying
 for remote_server in "${test_nodes[@]}"; do
-    echo "Removing old models on $remote_server..."
-    ssh "$USERNAME@$remote_server" "rm -rf /users/janechen/Genet/fig_reproduce/model/"
+    REMOTE_DEST_DIR="/users/janechen/Genet/fig_reproduce/model/$(basename $LOCAL_DEST_DIR)"
 
-    echo "Copying models to $remote_server..."
-    scp -r "$LOCAL_DEST_DIR" "$USERNAME@$remote_server:/users/janechen/Genet/fig_reproduce/model/"
-    echo "Models copied to $remote_server:/users/janechen/Genet/fig_reproduce/model/"
+    echo "Removing old models on $remote_server in $REMOTE_DEST_DIR..."
+    ssh "$USERNAME@$remote_server" "rm -rf $REMOTE_DEST_DIR"
+
+    echo "Copying models to $remote_server in $REMOTE_DEST_DIR..."
+    scp -r "$LOCAL_DEST_DIR" "$USERNAME@$remote_server:$REMOTE_DEST_DIR"
+    echo "Models copied to $remote_server:$REMOTE_DEST_DIR/"
 done
 
 echo "Model copying process completed successfully."
