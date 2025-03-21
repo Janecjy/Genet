@@ -75,6 +75,10 @@ TRAIN_SEQ_LEN = 100  # batchsize of pensieve training 100
 UP_LINK_SPEED_FILE="pensieve/data/12mbps"
 VIDEO_SIZE_DIR="pensieve/data/video_sizes"
 
+# Initialize min and max tracking arrays
+min_adaptor_input = None
+max_adaptor_input = None
+
 def setup_logger(logger_name, log_file, level=logging.INFO):
     """Create and return a logger with a file handler."""
     logger = logging.getLogger(logger_name)
@@ -943,72 +947,64 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     state, embeddings, tokens = rl_embedding.transform_state_and_add_embedding(agent_id, state, embeddings, tokens)                    
                     r_batch.append(reward)
 
-                    # First, min-max normalize embeddings to [0,1].
-                    # If embeddings is already 1D, great; if 2D, flatten or adapt as needed.
-                    embeddings = embeddings.flatten()  # If needed, make sure it's 1D
-                    embeddings_norm = min_max_normalize(embeddings)
+                    # First, ensure embeddings is 1D before normalization
+                    embeddings = embeddings.flatten()
 
-                    # We'll reshape the input state for the original actor
+                    # Reshape input state for the original actor
                     reshaped_state = np.reshape(state, (1, S_INFO, S_LEN))
 
                     if adaptor_input_type == "original_action_prob":
-                        # 1) Get the raw action probabilities (shape: (1, 3))
+                        original_action_prob = original_actor.predict(reshaped_state).flatten()
+                        adaptor_input_raw = np.concatenate((original_action_prob, embeddings), axis=0)
+
+                    elif adaptor_input_type == "original_selection":
                         original_action_prob = original_actor.predict(reshaped_state)
-                        # 2) Flatten to (3,)
-                        original_action_prob_flat = original_action_prob.flatten()
-                        # 3) Min-max normalize the probabilities
-                        original_action_prob_norm = min_max_normalize(original_action_prob_flat)
-                        # 4) Concatenate with normalized embeddings
+                        original_action_cumsum = np.cumsum(original_action_prob)
+                        original_selection = (original_action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+                        original_selection_one_hot = one_hot_encode(original_selection, 3)
+                        adaptor_input_raw = np.concatenate((original_selection_one_hot, embeddings), axis=0)
+
+                    elif adaptor_input_type == "original_bit_rate":
+                        original_action_prob = original_actor.predict(reshaped_state)
+                        original_action_cumsum = np.cumsum(original_action_prob)
+                        original_selection = (original_action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+                        bit_rate = calculate_from_selection(original_selection, last_bit_rate)
+                        bit_rate_one_hot = one_hot_encode(bit_rate, 6)
+                        adaptor_input_raw = np.concatenate((bit_rate_one_hot, embeddings), axis=0)
+
+                    elif adaptor_input_type == "hidden_state":
+                        original_hidden = original_actor.get_hidden(reshaped_state).flatten()
+                        adaptor_input_raw = np.concatenate((original_hidden, embeddings))
+
+                    # Track min and max values before normalization
+                    if min_raw_adaptor_input is None or max_raw_adaptor_input is None:
+                        min_raw_adaptor_input = np.copy(adaptor_input_raw)
+                        max_raw_adaptor_input = np.copy(adaptor_input_raw)
+                    else:
+                        min_raw_adaptor_input = np.minimum(min_raw_adaptor_input, adaptor_input_raw)
+                        max_raw_adaptor_input = np.maximum(max_raw_adaptor_input, adaptor_input_raw)
+
+                    # Normalize embeddings and adaptor input
+                    embeddings_norm = min_max_normalize(embeddings)
+
+                    if adaptor_input_type == "original_action_prob":
+                        original_action_prob_norm = min_max_normalize(original_action_prob)
                         adaptor_input = np.concatenate((original_action_prob_norm, embeddings_norm), axis=0)
 
-
-                    elif (adaptor_input_type == "original_selection"):
-                        # 1) Get the raw probabilities
-                        original_action_prob = original_actor.predict(reshaped_state)
-                        original_action_cumsum = np.cumsum(original_action_prob)
-                        # 2) Sample an action from these probabilities
-                        original_selection = (original_action_cumsum >
-                                            np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
-                        # 3) One-hot encode the selection ∈ {0,1,2}
-                        #    If your actual actions are [-1, 0, 1], be sure to map them consistently.
-                        #    E.g., -1 -> index 0, 0 -> index 1, 1 -> index 2
-                        original_selection_one_hot = one_hot_encode(original_selection, 3)
-
-                        # 4) Concatenate with normalized embeddings
+                    elif adaptor_input_type == "original_selection":
                         adaptor_input = np.concatenate((original_selection_one_hot, embeddings_norm), axis=0)
 
-                    elif (adaptor_input_type == "original_bit_rate"):
-                        # 1) Get the raw probabilities
-                        original_action_prob = original_actor.predict(reshaped_state)
-                        original_action_cumsum = np.cumsum(original_action_prob)
-                        # 2) Sample an action for selection
-                        original_selection = (original_action_cumsum >
-                                            np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
-                        # 3) Convert that selection to a bit_rate in {0,1,2,3,4,5} 
-                        bit_rate = calculate_from_selection(original_selection, last_bit_rate)
-                        # 4) One-hot encode bit_rate ∈ {0..5}
-                        bit_rate_one_hot = one_hot_encode(bit_rate, 6)
-
-                        # 5) Concatenate with normalized embeddings
+                    elif adaptor_input_type == "original_bit_rate":
                         adaptor_input = np.concatenate((bit_rate_one_hot, embeddings_norm), axis=0)
 
-                    elif (adaptor_input_type == "hidden_state"):
-                        # 1) Retrieve and flatten the hidden state
-                        original_hidden = original_actor.get_hidden(reshaped_state)  # shape: (1, 128) in your example
-                        original_hidden_flat = original_hidden.flatten()             # shape: (128,)
-
-                        # 2) Min-max normalize the hidden state
-                        original_hidden_flat_norm = min_max_normalize(original_hidden_flat)
-
-                        # 3) Flatten & min-max normalize embeddings if necessary (done above)
-                        #    We already have `embeddings_norm`.
-
-                        # 4) Concatenate them
+                    elif adaptor_input_type == "hidden_state":
+                        original_hidden_flat_norm = min_max_normalize(original_hidden)
                         adaptor_input = np.concatenate((original_hidden_flat_norm, embeddings_norm))
 
 
                     agent_logger.info(f"[Agent {agent_id}] Adaptor input shape: {adaptor_input.shape}")
-                    action_prob = actor.predict(adaptor_input.reshape(1, -1))  # Expands to shape (1, 17)
+                    action_prob = actor.predict(adaptor_input.reshape(1, -1))
+
                     if np.isnan(action_prob[0, 0]) and agent_id == 0:
                         print(epoch)
                         print(state, "state")
@@ -1024,6 +1020,10 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                     end_of_video = redis_client.get(f"{agent_id}_stop_flag")
                     agent_logger.info(f"[Agent {agent_id}] end_of_video check 1: {end_of_video}")
                     if len(r_batch) >= TRAIN_SEQ_LEN or (end_of_video and int(end_of_video) == 1):
+                        # Print min and max values before normalization at the end of the video
+                        agent_logger.info(f"[Agent {agent_id}] Min adaptor input values (before normalization): {min_raw_adaptor_input}")
+                        agent_logger.info(f"[Agent {agent_id}] Max adaptor input values (before normalization): {max_raw_adaptor_input}")
+
                         exp_queue.put([s_batch[1:],  # ignore the first chuck
                                     a_batch[1:],  # since we don't have the
                                     r_batch[1:],  # control over it
