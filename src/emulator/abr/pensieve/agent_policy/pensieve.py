@@ -75,10 +75,6 @@ TRAIN_SEQ_LEN = 100  # batchsize of pensieve training 100
 UP_LINK_SPEED_FILE="pensieve/data/12mbps"
 VIDEO_SIZE_DIR="pensieve/data/video_sizes"
 
-# Initialize min and max tracking arrays
-min_raw_adaptor_input = None
-max_raw_adaptor_input = None
-
 def setup_logger(logger_name, log_file, level=logging.INFO):
     """Create and return a logger with a file handler."""
     logger = logging.getLogger(logger_name)
@@ -830,6 +826,10 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
         f"/mydata/logs/{agent_id}_agent.log"
     )
     agent_logger.info("Agent %d started!", agent_id)
+
+    # Initialize min and max tracking arrays
+    min_raw_adaptor_input = None
+    max_raw_adaptor_input = None
 
     _, _, video_server_port = rl_embedding.launch_video_server_and_bftrace(agent_id, agent_logger)
 
