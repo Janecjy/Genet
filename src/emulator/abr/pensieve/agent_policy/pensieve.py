@@ -76,8 +76,8 @@ UP_LINK_SPEED_FILE="pensieve/data/12mbps"
 VIDEO_SIZE_DIR="pensieve/data/video_sizes"
 
 # Initialize min and max tracking arrays
-min_adaptor_input = None
-max_adaptor_input = None
+min_raw_adaptor_input = None
+max_raw_adaptor_input = None
 
 def setup_logger(logger_name, log_file, level=logging.INFO):
     """Create and return a logger with a file handler."""
