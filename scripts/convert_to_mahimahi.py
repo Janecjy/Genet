@@ -87,8 +87,8 @@ class AbrTrace:
 
 
 # Paths
-input_dir = "/home/jane/Genet/fig_reproduce/data/synthetic_test_plus"
-output_dir = "/home/jane/Genet/fig_reproduce/data/synthetic_test_plus_mahimahi"
+input_dir = "/home/jane/Genet/fig_reproduce/data/synthetic_test"
+output_dir = "/home/jane/Genet/fig_reproduce/data/synthetic_test_mahimahi"
 
 # Ensure output directory exists
 os.makedirs(output_dir, exist_ok=True)

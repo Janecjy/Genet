@@ -28,7 +28,7 @@ VIDEO_SERVER_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve/video_server/v
 
 # Default argument values
 MODEL_PATH = f"{GENET_BASE_PATH}/fig_reproduce/model/{args.model_dir_name}/"
-TRACE_DIR = f"{GENET_BASE_PATH}/fig_reproduce/data/synthetic_test_plus_mahimahi/"
+TRACE_DIR = f"{GENET_BASE_PATH}/fig_reproduce/data/synthetic_test_mahimahi/"
 SUMMARY_DIR = args.model_dir_name  # Same as model directory name
 PORT_ID = "6626"
 AGENT_ID = "0"
