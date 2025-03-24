@@ -4,9 +4,14 @@ set -e
 VIDEO_SIZE_DIR=pensieve/data/video_sizes
 # ACTOR_PATH=${ROOT}/results/7_dims_rand_large_range_correct_rebuf_penalty/even_udr_1_rand_interval/actor_ep_50000.pth
 ACTOR_PATH=pensieve/data/model_example/ADR_model/nn_model_ep_25600.ckpt
-UP_LINK_SPEED_FILE=pensieve/data/12mbps
-TRACE_DIR=pensieve/data/trace_set_1/
-CONFIG_FILE=pensieve/config/emulation/param_sweep.json
+UP_LINK_SPEED_FILE=/users/janechen/Genet/src/emulator/abr/pensieve/data/12mbps
+TRACE_DIR=/users/janechen/Genet/abr_trace/training_trace/test_trace_mahimahi/
+CONFIG_FILE=/users/janechen/Genet/config/abr/udr3_emu_par.json
+TRACE_DIR=$1
+SUMMARY_DIR_NAME=$2
+PORT_ID=$3
+AGENT_ID=$4
+EXTRA_ARG=$5
 
 # The architecture of emulation experiment.
 
@@ -43,7 +48,7 @@ trace_files=`ls ${TRACE_DIR}`
                     # echo "${buffer_threshold} ${delay} ${up_pkt_loss} ${down_pkt_loss} ${TRACE_FILE}"
                       mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
                       mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \
-                      bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port 8010 --abr BufferBased --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir pensieve/tests/BBA_${buf_th}_${delay}_${TRACE_DIR} --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322"
+                      bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port ${PORT_ID} --abr BufferBased --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir /mydata/results/${SUMMARY_DIR_NAME}/BBA_${AGENT_ID}_${buf_th}_${delay} --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322 ${EXTRA_ARG}"
 
 #                      mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
 #                      mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \

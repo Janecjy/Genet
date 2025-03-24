@@ -73,7 +73,14 @@ def get_last_line(file_path):
         return f.readline().decode()
 
 
-def get_bftrace_out_path(agent_id):
+def get_bftrace_out_path(agent_id, collection=False, summary_dir=None, trace_name=None):
+    if collection and summary_dir and trace_name:
+        output_filename = trace_name.replace('.log', '.out')
+        
+        # Ensure summary_dir is properly formatted
+        summary_dir = os.path.abspath(summary_dir)  # Normalize path
+        return os.path.join(summary_dir, output_filename)
+
     return f"/mydata/logs/bpftrace_out_{agent_id}.txt"
 
 
@@ -245,7 +252,7 @@ def add_embedding(state, tokens, embeddings):
 ################################################################################
 
 
-def launch_video_server_and_bftrace(agent_id, agent_logger=None, run_video_server=True, wait=False, redis_client=None):
+def launch_video_server_and_bftrace(agent_id, agent_logger=None, run_video_server=True, wait=False, redis_client=None, collection=False, summary_dir=None, trace_name=None):
     # Launch a video server for the agent, log info in agent_logger, if wait, wait for the server to finish
 
     ################################################################################
@@ -258,6 +265,7 @@ def launch_video_server_and_bftrace(agent_id, agent_logger=None, run_video_serve
     video_server_proc = None
 
     if run_video_server:
+        print(f"Starting video server on port={video_server_port}")
         if agent_logger:
             agent_logger.info("Starting video server on port=%d", video_server_port)
         video_server_proc = subprocess.Popen(
@@ -270,9 +278,13 @@ def launch_video_server_and_bftrace(agent_id, agent_logger=None, run_video_serve
     # 2) Launch bpftrace in the background, capturing traffic on `video_server_port`.
     ################################################################################
     bpftrace_script = "/users/janechen/Genet/src/emulator/abr/pensieve/virtual_browser/check.bt"
-    bpftrace_out_path = get_bftrace_out_path(agent_id)
+    if collection:
+        bpftrace_out_path = get_bftrace_out_path(agent_id, collection, summary_dir, trace_name)
+    else:
+        bpftrace_out_path = get_bftrace_out_path(agent_id)
 
     agent_logger.info(f"Starting bpftrace for agent {agent_id}, port={video_server_port}, output={bpftrace_out_path}")
+    print(f"Starting bpftrace for agent {agent_id}, port={video_server_port}, output={bpftrace_out_path}")
     bpftrace_outfile = open(bpftrace_out_path, "w")
     bpftrace_cmd = ["sudo", "bpftrace", bpftrace_script, str(video_server_port)]
     bpftrace_proc = subprocess.Popen(bpftrace_cmd, stdout=bpftrace_outfile, stderr=subprocess.STDOUT)

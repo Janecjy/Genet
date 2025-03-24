@@ -91,7 +91,9 @@ def parse_args():
     parser.add_argument('--num-epochs', type=int, default=100000,
                         help='Number of training epochs')
     parser.add_argument('--use_embedding', action='store_true',
-                        help='Use embedding during action prediciton')   
+                        help='Use embedding during action prediciton')
+    parser.add_argument('--collection', action='store_true',
+                        help='Use collection mode for ABR bpftrace data collection')     
     
     return parser.parse_args()
 
@@ -185,6 +187,10 @@ def main():
     if args.use_embedding:
         embedding, tokens = rl_embedding.null_embedding_and_token()
         video_server_proc, bpftrace_process, video_server_port = rl_embedding.launch_video_server_and_bftrace(agent_id, logger, run_video_server=False)
+    elif args.collection:
+        print("Collection mode")
+        video_server_proc, bpftrace_process, video_server_port = rl_embedding.launch_video_server_and_bftrace(agent_id, logger, run_video_server=False, collection=True, summary_dir=args.summary_dir, trace_name=args.trace_file)
+        port_number = video_server_port
     else:
         # Start bpftrace before ABR server
         trace_output = "bpftrace_output.txt"
