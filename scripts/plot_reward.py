@@ -3,9 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Define result directories
-RESULTS_DIR = "/home/jane/Genet/scripts/03_19_model_set"
-PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/synthetic_test_plus_mahimahi")
-UNUM_DIR = os.path.join(RESULTS_DIR, "03_19_model_set/03_19_model_set")
+RESULTS_DIR = "/home/jane/Genet/scripts/03_22_model_set"
+PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/synthetic_test_mahimahi")
+UNUM_DIR = os.path.join(RESULTS_DIR, "03_22_model_set/03_22_model_set")
 
 # Define model configurations (same as training script)
 adaptor_inputs = ["original_selection", "hidden_state"]
@@ -25,6 +25,15 @@ def get_model_config(server_id):
     adaptor_input, hidden_layer, seed = adaptor_configs[index]
     model_name = f"{'action' if adaptor_input == 'original_selection' else 'hidden'}_{hidden_layer}_{seed}"
     return model_name
+
+# Function to check if log file has more than 2 rows
+def is_valid_log(log_path):
+    try:
+        df = pd.read_csv(log_path, delim_whitespace=True)
+        return 'reward' in df.columns and len(df) > 2
+    except Exception as e:
+        print(f"Error reading {log_path}: {e}")
+    return False
 
 # Function to read a log file and compute mean reward (excluding the first row)
 def compute_mean_reward(log_path):
@@ -47,18 +56,14 @@ common_traces = set(pensieve_logs.keys())
 model_rewards = {}
 
 for model, model_path in unum_models.items():
-    server_id = int(model.split('_')[1])  # Extract server number
-    model_name = get_model_config(server_id)  # Get renamed model config
+    server_id = int(model.split('_')[1])
+    model_name = get_model_config(server_id)
     model_rewards[model] = {"name": model_name, "path": model_path, "rewards": []}
-    model_traces = set()
+    model_traces = {trace for trace in pensieve_logs.keys()
+                     if os.path.exists(os.path.join(model_path, "UDR-3_0_60_40", trace)) and is_valid_log(os.path.join(model_path, "UDR-3_0_60_40", trace))}
+    common_traces &= model_traces
 
-    # Collect all log files for this model
-    for trace_file in pensieve_logs.keys():
-        trace_path = os.path.join(model_path, "UDR-3_0_60_40", trace_file)
-        if os.path.exists(trace_path):
-            model_traces.add(trace_file)
-
-    common_traces &= model_traces  # Keep only common traces
+print("Common traces:", common_traces)
 
 # Step 3: Compute mean rewards per model
 pensieve_mean_rewards = []
@@ -111,12 +116,15 @@ for model_name, mean_reward in hidden_models:
     mean_rewards.append(mean_reward)
 
 # Step 6: Plot the results
+print("Mean rewards:", mean_rewards)
+print("X labels:", x_labels)
 plt.figure(figsize=(12, 6))
 plt.bar(x_labels, mean_rewards, color=['blue'] + ['orange'] * len(action_models) + ['green'] * len(hidden_models))
 plt.xlabel("Model (Adaptor Input_Hidden_Size_Seed)")
 plt.ylabel("Mean Reward")
 plt.title("Comparison of Mean Rewards Across Models")
 plt.xticks(rotation=45, ha="right")  # Rotate labels for better readability
+plt.ylim(-5, 3)
 plt.tight_layout()
 
 # Save and display the plot

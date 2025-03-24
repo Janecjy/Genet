@@ -100,7 +100,8 @@ if len(trace_files) < 10:
 
 # Select 10 random traces
 random.seed(42)  # Ensures reproducibility
-selected_traces = random.sample(trace_files, 10)
+# selected_traces = random.sample(trace_files, 10)
+selected_traces = trace_files
 
 # Convert and save in Mahimahi format
 for trace_file in selected_traces:

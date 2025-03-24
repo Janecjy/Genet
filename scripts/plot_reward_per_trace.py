@@ -3,12 +3,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Define result directories
-RESULTS_DIR = "/home/jane/Genet/scripts/03_19_model_set"
+RESULTS_DIR = "/home/jane/Genet/scripts/03_22_model_set"
 TRACE_COMPARISON_DIR = os.path.join(RESULTS_DIR, "trace_comparisons")
 os.makedirs(TRACE_COMPARISON_DIR, exist_ok=True)  # Ensure directory exists
 
-PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/synthetic_test_plus_mahimahi")
-UNUM_DIR = os.path.join(RESULTS_DIR, "03_19_model_set/03_19_model_set")
+PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/synthetic_test_mahimahi")
+UNUM_DIR = os.path.join(RESULTS_DIR, "03_22_model_set/03_22_model_set")
 
 # Define model configurations (same as training script)
 adaptor_inputs = ["original_selection", "hidden_state"]
@@ -76,20 +76,23 @@ for trace_file, pensieve_log_path in pensieve_logs.items():
     x_labels = ["pensieve-original"] + [m[0] for m in action_models] + [m[0] for m in hidden_models]
     mean_rewards = [model_rewards[label] for label in x_labels]
 
-    # Step 6: Plot the results
-    plt.figure(figsize=(12, 6))
-    plt.bar(x_labels, mean_rewards, color=['blue'] + ['orange'] * len(action_models) + ['green'] * len(hidden_models))
-    plt.xlabel("Model (Adaptor Input_Hidden_Size_Seed)")
-    plt.ylabel("Mean Reward")
-    plt.title(f"Comparison of Mean Rewards for {trace_name}")
-    plt.xticks(rotation=45, ha="right")  # Rotate labels for better readability
-    plt.tight_layout()
+    if len(x_labels) > 1:
 
-    # Step 7: Save each trace's plot separately
-    plot_path = os.path.join(TRACE_COMPARISON_DIR, f"{trace_name}_comparison.png")
-    plt.savefig(plot_path)
-    plt.close()
+        # Step 6: Plot the results
+        plt.figure(figsize=(12, 6))
+        plt.bar(x_labels, mean_rewards, color=['blue'] + ['orange'] * len(action_models) + ['green'] * len(hidden_models))
+        plt.xlabel("Model (Adaptor Input_Hidden_Size_Seed)")
+        plt.ylabel("Mean Reward")
+        plt.title(f"Comparison of Mean Rewards for {trace_name}")
+        plt.xticks(rotation=45, ha="right")  # Rotate labels for better readability
+        plt.tight_layout()
+        plt.ylim(-5, 3)  # Set y-axis limits
 
-    print(f"Saved plot: {plot_path}")
+        # Step 7: Save each trace's plot separately
+        plot_path = os.path.join(TRACE_COMPARISON_DIR, f"{trace_name}_comparison.png")
+        plt.savefig(plot_path)
+        plt.close()
+
+        print(f"Saved plot: {plot_path}")
 
 print("All per-trace comparison plots generated successfully.")

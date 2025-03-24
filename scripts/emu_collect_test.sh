@@ -35,11 +35,11 @@ for node_branch in "${test_nodes[@]}"; do
     echo "Processing $remote_server with branch: $branch"
 
     if [ "$branch" == "sim-reproduce" ]; then
-        REMOTE_RESULTS_DIR="/users/janechen/Genet/src/emulator/abr/pensieve/tests/UDR-3_60_40_/users/janechen/Genet/fig_reproduce/data/synthetic_test_plus_mahimahi/"
+        REMOTE_RESULTS_DIR="/users/janechen/Genet/src/emulator/abr/pensieve/tests/UDR-3_60_40_/users/janechen/Genet/fig_reproduce/data/synthetic_test_mahimahi/"
         LOCAL_DEST_DIR="$LOCAL_RESULTS_DIR/pensieve-original"
 
     elif [ "$branch" == "unum-adaptor" ]; then
-        SUMMARY_DIR=$(ssh "$USERNAME@$remote_server" "ls /mydata/results/" | grep -m1 '' || echo "default_summary")
+        SUMMARY_DIR=$(ssh "$USERNAME@$remote_server" "ls /mydata/results/ | grep -m1 '$LOCAL_RESULTS_DIR'" || echo "default_summary")
 
         if [ -z "$SUMMARY_DIR" ] || [ "$SUMMARY_DIR" == "default_summary" ]; then
             echo "Warning: No summary directory found on $remote_server. Skipping..."
