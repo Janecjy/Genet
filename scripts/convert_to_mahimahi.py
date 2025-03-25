@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import argparse
 
 MILLISECONDS_IN_SECOND = 1000.0
 
@@ -86,34 +87,31 @@ class AbrTrace:
         return AbrTrace(timestamps, bandwidths, link_rtt, buffer_thresh)
 
 
-# Paths
-input_dir = "/home/jane/Genet/fig_reproduce/data/synthetic_test"
-output_dir = "/home/jane/Genet/fig_reproduce/data/synthetic_test_mahimahi"
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input-dir", required=True, help="Path to the directory containing trace files")
+    parser.add_argument("--output-dir", required=True, help="Path to save Mahimahi-formatted traces")
+    parser.add_argument("--node-id", type=int, required=True, help="Node ID")
+    parser.add_argument("--num-nodes", type=int, required=True, help="Total number of nodes")
+    args = parser.parse_args()
 
-# Ensure output directory exists
-os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(args.output_dir, exist_ok=True)
 
-# Get all trace files
-trace_files = [f for f in os.listdir(input_dir)]
-if len(trace_files) < 10:
-    raise ValueError(f"Not enough trace files in {input_dir}, found {len(trace_files)}.")
+    trace_files = sorted(os.listdir(args.input_dir))
+    
+    # Distribute traces evenly across nodes
+    selected_traces = [trace_files[i] for i in range(args.node_id - 1, len(trace_files), args.num_nodes)]
 
-# Select 10 random traces
-random.seed(42)  # Ensures reproducibility
-# selected_traces = random.sample(trace_files, 10)
-selected_traces = trace_files
+    for trace_file in selected_traces:
+        input_path = os.path.join(args.input_dir, trace_file)
+        output_path = os.path.join(args.output_dir, trace_file)
 
-# Convert and save in Mahimahi format
-for trace_file in selected_traces:
-    input_path = os.path.join(input_dir, trace_file)
-    output_path = os.path.join(output_dir, trace_file)
+        trace = AbrTrace.load_from_file(input_path)
+        trace.convert_to_mahimahi_format(output_path)
 
-    # Load trace
-    trace = AbrTrace.load_from_file(input_path)
+        print(f"Node {args.node_id} converted {trace_file} -> {output_path}")
 
-    # Convert to Mahimahi format
-    trace.convert_to_mahimahi_format(output_path)
+    print(f"Node {args.node_id}: Conversion completed!")
 
-    print(f"Converted {trace_file} -> {output_path}")
-
-print("Conversion completed!")
+if __name__ == "__main__":
+    main()
