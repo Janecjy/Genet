@@ -79,6 +79,9 @@ def get_bftrace_out_path(agent_id, collection=False, summary_dir=None, trace_nam
         
         # Ensure summary_dir is properly formatted
         summary_dir = os.path.abspath(summary_dir)  # Normalize path
+
+        # Create the directory if it doesn't exist
+        os.makedirs(summary_dir, exist_ok=True)
         return os.path.join(summary_dir, output_filename)
 
     return f"/mydata/logs/bpftrace_out_{agent_id}.txt"
