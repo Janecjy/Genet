@@ -9,6 +9,7 @@ GENET_BASE_PATH = "/users/janechen/Genet"
 ABR_SCRIPT_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve/drivers"
 VIDEO_SERVER_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve/video_server"
 SYNTHETIC_TRACE_PATH = f"{GENET_BASE_PATH}/abr_trace/training_trace/synthetic_train"
+TMP_TRACE_PATH = "/mydata/tmp_traces"
 
 # Load node configuration
 CONFIG_FILE = "config.yaml"
@@ -65,23 +66,31 @@ def run_remote_commands(node, node_id):
             f"mkdir -p {SYNTHETIC_TRACE_PATH}",
             f"source ~/miniconda/bin/activate genet_env",
 
-            # Generate synthetic traces
-            f"bash -c 'source ~/miniconda/bin/activate genet_env && "
-            f"cd {GENET_BASE_PATH}/src/emulator/abr && "
-            f"python {GENET_BASE_PATH}/src/emulator/abr/pensieve/agent_policy/generate_synthetic_traces.py "
-            f"--config-file={GENET_BASE_PATH}/config/abr/udr3_emu_par.json "
-            f"--output-dir={SYNTHETIC_TRACE_PATH} --num-traces=10 --seed={node_id * 10}'",
+            # # Generate synthetic traces
+            # f"bash -c 'source ~/miniconda/bin/activate genet_env && "
+            # f"cd {GENET_BASE_PATH}/src/emulator/abr && "
+            # f"python {GENET_BASE_PATH}/src/emulator/abr/pensieve/agent_policy/generate_synthetic_traces.py "
+            # f"--config-file={GENET_BASE_PATH}/config/abr/udr3_emu_par.json "
+            # f"--output-dir={SYNTHETIC_TRACE_PATH} --num-traces=10 --seed={node_id * 10}'",
 
-            # Convert real-world traces to Mahimahi format
-            f"bash -c 'source ~/miniconda/bin/activate genet_env && "
-            f"cd {GENET_BASE_PATH}/scripts && "
-            f"python {GENET_BASE_PATH}/scripts/convert_to_mahimahi.py --input-dir {GENET_BASE_PATH}/abr_trace/training_trace/fcc_train "
-            f"--output-dir {GENET_BASE_PATH}/abr_trace/training_trace/fcc_train_mahimahi --node-id {node_id} --num-nodes {NUM_NODES}'",
+            # # Convert real-world traces to Mahimahi format
+            # f"bash -c 'source ~/miniconda/bin/activate genet_env && "
+            # f"cd {GENET_BASE_PATH}/scripts && "
+            # f"python {GENET_BASE_PATH}/scripts/convert_to_mahimahi.py --input-dir {GENET_BASE_PATH}/abr_trace/training_trace/fcc_train "
+            # f"--output-dir {GENET_BASE_PATH}/abr_trace/training_trace/fcc_train_mahimahi --node-id {node_id} --num-nodes {NUM_NODES}'",
 
-            f"bash -c 'source ~/miniconda/bin/activate genet_env && "
-            f"cd {GENET_BASE_PATH}/scripts && "
-            f"python {GENET_BASE_PATH}/scripts/convert_to_mahimahi.py --input-dir {GENET_BASE_PATH}/abr_trace/training_trace/norway_train "
-            f"--output-dir {GENET_BASE_PATH}/abr_trace/training_trace/norway_train_mahimahi --node-id {node_id} --num-nodes {NUM_NODES}'",
+            # f"bash -c 'source ~/miniconda/bin/activate genet_env && "
+            # f"cd {GENET_BASE_PATH}/scripts && "
+            # f"python {GENET_BASE_PATH}/scripts/convert_to_mahimahi.py --input-dir {GENET_BASE_PATH}/abr_trace/training_trace/norway_train "
+            # f"--output-dir {GENET_BASE_PATH}/abr_trace/training_trace/norway_train_mahimahi --node-id {node_id} --num-nodes {NUM_NODES}'",
+            
+            # Ensure temporary trace directory exists
+            # f"mkdir -p {TMP_TRACE_PATH}",
+
+            # # Copy trace files to the temporary directory
+            # f"cp {GENET_BASE_PATH}/abr_trace/training_trace/fcc_train_mahimahi/* {TMP_TRACE_PATH}/",
+            # f"cp {GENET_BASE_PATH}/abr_trace/training_trace/norway_train_mahimahi/* {TMP_TRACE_PATH}/",
+            # f"cp {GENET_BASE_PATH}/abr_trace/training_trace/synthetic_train/* {TMP_TRACE_PATH}/",
         ]
 
         # **Run setup commands one by one, waiting for each to complete**
@@ -105,12 +114,8 @@ def run_remote_commands(node, node_id):
 
         # List of ABR collection commands to run sequentially
         abr_commands = [
-            f"{ABR_SCRIPT_PATH}/run_mahimahi_emulation_BBA.sh {GENET_BASE_PATH}/abr_trace/training_trace/fcc_train_mahimahi/ 03_24_collect 6626 0 --collection",
-            f"{ABR_SCRIPT_PATH}/run_mahimahi_emulation_BBA.sh {GENET_BASE_PATH}/abr_trace/training_trace/norway_train_mahimahi/ 03_24_collect 6626 0 --collection",
-            f"{ABR_SCRIPT_PATH}/run_mahimahi_emulation_BBA.sh {GENET_BASE_PATH}/abr_trace/training_trace/synthetic_train/ 03_24_collect 6626 0 --collection",
-            f"{ABR_SCRIPT_PATH}/run_mahimahi_emulation_MPC.sh {GENET_BASE_PATH}/abr_trace/training_trace/fcc_train_mahimahi/ 03_24_collect 6626 0 --collection",
-            f"{ABR_SCRIPT_PATH}/run_mahimahi_emulation_MPC.sh {GENET_BASE_PATH}/abr_trace/training_trace/norway_train_mahimahi/ 03_24_collect 6626 0 --collection",
-            f"{ABR_SCRIPT_PATH}/run_mahimahi_emulation_MPC.sh {GENET_BASE_PATH}/abr_trace/training_trace/synthetic_train/ 03_24_collect 6626 0 --collection",
+            # f"{ABR_SCRIPT_PATH}/run_mahimahi_emulation_BBA.sh {TMP_TRACE_PATH}/ 03_24_collect 6626 0 --collection",
+            f"{ABR_SCRIPT_PATH}/run_mahimahi_emulation_MPC.sh {TMP_TRACE_PATH}/ 03_24_collect 6626 0 --collection",
         ]
 
         # **Execute ABR scripts in tmux, ensuring sequential execution**

@@ -129,3 +129,4 @@ fig_reproduce/model/*
 fig_reproduce/model/*
 fig_reproduce/data/*
 *.ipynb
+data/*
