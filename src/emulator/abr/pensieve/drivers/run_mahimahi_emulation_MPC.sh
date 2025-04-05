@@ -37,6 +37,7 @@ delay=40
 up_pkt_loss=0
 down_pkt_loss=0
 buf_th=60
+qs=40*30/6
 trace_files=`ls ${TRACE_DIR}`
 #for buf_th in $(jq -r -c '.buffer_threshold.values[]' ${CONFIG_FILE}); do
  #   for delay in $(jq -r -c '.delay.values[]' ${CONFIG_FILE}); do
@@ -46,7 +47,7 @@ trace_files=`ls ${TRACE_DIR}`
 		                # trace_file=${UP_LINK_SPEED_FILE}
                     # echo "${buffer_threshold} ${delay} ${up_pkt_loss} ${down_pkt_loss} ${TRACE_FILE}"
                       mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
-                      mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \
+                      mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} --uplink-queue=droptail --uplink-queue-args="packets=$qs" --downlink-queue=droptail --downlink-queue-args="packets=$qs" -- \
                       bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port ${PORT_ID} --abr RobustMPC --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir /mydata/results/${SUMMARY_DIR_NAME}/RobustMPC_${AGENT_ID}_${buf_th}_${delay} --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322 --num-epochs=1 --run_time=0 ${EXTRA_ARG}"
 
 #                      mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
