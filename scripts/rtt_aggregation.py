@@ -7,13 +7,93 @@ from multiprocessing import Pool, cpu_count
 # 80ms in nanoseconds
 RTT_INTERVAL_NS = 80_000_000
 TOTAL_INTERVAL_NS = 20 * RTT_INTERVAL_NS
+SAMPLE_INTERVAL_NS = 10_000_000  # 10 ms in nanoseconds
+
+def sample_block(block, block_start, block_end, pre_pkt_lost, dt_pre, pre_cwnd):
+    """
+    Within [block_start, block_end), collect lines every 10 ms, 
+    then compute f2..f6 from those sampled lines. For f5, f6, we also average 
+    over all sampled lines in this block.
+    """
+    # Sort block by time_us so we process lines in ascending time
+    block_sorted = sorted(block, key=lambda x: x['time_us'])
+
+    sampled = []
+    next_collect_time = block_start + SAMPLE_INTERVAL_NS
+
+    # We'll step through time from block_start in increments of 10 ms
+    while next_collect_time <= block_end:
+        # find the first line >= next_collect_time
+        line_candidates = [p for p in block_sorted if p['time_us'] >= next_collect_time]
+        if not line_candidates:
+            break
+        chosen_line = line_candidates[0]
+        sampled.append(chosen_line)
+        next_collect_time += SAMPLE_INTERVAL_NS
+
+    # If we didn't sample any lines in this block, can't compute features
+    if not sampled:
+        return None, pre_pkt_lost, dt_pre, pre_cwnd
+
+    # We'll store all per-line computations in lists
+    srtt_vals = []
+    rttvar_vals = []
+    rate_vals = []
+    f5_vals = []  # each line's instantaneous loss-based bandwidth
+    f6_vals = []  # each line's cwnd ratio
+
+    for line in sampled:
+        # f2, f3, f4
+        srtt_vals.append(line['srtt'] / 100000.0)
+        rttvar_vals.append(line['rttvar'] / 1000.0)
+        rate_vals.append(line['rate_delivered'] / 125000.0 / 100.0)
+
+        # Compute line-based f5 (loss-based bandwidth)
+        lost = line['lost']
+        mss = line['mss_cache']
+        time_us = line['time_us']
+
+        dt = time_us - dt_pre if dt_pre > 0 else 1
+        dt_pre = time_us
+
+        l_db = (lost - pre_pkt_lost) * mss if lost > pre_pkt_lost else 0
+        pre_pkt_lost = lost
+
+        if dt > 0:
+            line_f5 = 8.0 * l_db / dt / 100.0
+        else:
+            line_f5 = 0.0
+        f5_vals.append(line_f5)
+
+        # Compute line-based f6 (cwnd ratio)
+        cwnd = line['snd_cwnd']
+        if pre_cwnd > 0:
+            line_f6 = cwnd / pre_cwnd
+        else:
+            line_f6 = 0.0
+        f6_vals.append(line_f6)
+
+        # Update pre_cwnd to the current line's cwnd for the next line's ratio
+        pre_cwnd = cwnd
+
+    # f1 is constant
+    f1 = 0.8
+
+    # Average the sample-based lists
+    srtt_avg = np.mean(srtt_vals)
+    rttvar_avg = np.mean(rttvar_vals)
+    rate_avg = np.mean(rate_vals)
+    f5_avg = np.mean(f5_vals)
+    f6_avg = np.mean(f6_vals)
+
+    return [f1, srtt_avg, rttvar_avg, rate_avg, f5_avg, f6_avg], pre_pkt_lost, dt_pre, pre_cwnd
+
 
 def build_sample(lines, start_idx):
-    sample = []
-    pre_pkt_lost = 0
-    dt_pre = 0
-    pre_cwnd = 0
-
+    """
+    For each of 20 RTT intervals (80ms each), gather lines in 10ms increments, 
+    then compute average features (including f5, f6) from those samples.
+    """
     parsed = []
     for line in lines[start_idx:]:
         if line.strip() == "" or line.startswith("time_us") or line.startswith("Attaching"):
@@ -33,13 +113,19 @@ def build_sample(lines, start_idx):
                 'lost': int(cols[6]),
                 'snd_cwnd': int(cols[8])
             })
+            # Stop once we've covered 20 RTT intervals from the first line
             if len(parsed) > 1 and (time_us - parsed[0]['time_us']) > TOTAL_INTERVAL_NS:
-                break  # Stop once we’ve reached 20 RTT intervals
+                break
         except:
             continue
 
-    if len(parsed) == 0:
+    if not parsed:
         return None
+
+    sample = []
+    pre_pkt_lost = 0
+    dt_pre = 0
+    pre_cwnd = 0
 
     t0 = parsed[0]['time_us']
     rtt_idx = 0
@@ -51,35 +137,14 @@ def build_sample(lines, start_idx):
         if not block:
             return None
 
-        f1 = 80 / 100.0
+        block_features, pre_pkt_lost, dt_pre, pre_cwnd = sample_block(
+            block, interval_start, interval_end, pre_pkt_lost, dt_pre, pre_cwnd
+        )
 
-        srtt = np.mean([b['srtt'] / 100000.0 for b in block])
-        rttvar = np.mean([b['rttvar'] / 1000.0 for b in block])
-        rate_delivered = np.mean([b['rate_delivered'] / 125000.0 / 100.0 for b in block])
+        if block_features is None:
+            return None
 
-        # Loss bandwidth calculation
-        loss_db = []
-        sent_dt = []
-        for b in block:
-            lost = b['lost']
-            mss = b['mss_cache']
-            time_us = b['time_us']
-            l_db = (lost - pre_pkt_lost) * mss if lost > pre_pkt_lost else 0
-            dt = time_us - dt_pre if dt_pre > 0 else 1
-            loss_db.append(l_db)
-            sent_dt.append(dt)
-            pre_pkt_lost = lost
-            dt_pre = time_us
-
-        f5 = 8.0 * sum(loss_db) / sum(sent_dt) / 100.0 if sum(sent_dt) > 0 else 0.0
-
-        # CWND ratio
-        snd_cwnds = [b['snd_cwnd'] for b in block]
-        snd_cwnd = snd_cwnds[-1] if snd_cwnds else pre_cwnd
-        f6 = snd_cwnd / pre_cwnd if pre_cwnd > 0 else 0.0
-        pre_cwnd = snd_cwnd
-
-        sample.append([f1, srtt, rttvar, rate_delivered, f5, f6])
+        sample.append(block_features)
 
         rtt_idx += 1
         interval_start = interval_end
@@ -93,27 +158,26 @@ def process_one_file(filepath):
     with open(filepath, "r") as f:
         lines = f.readlines()
 
-    # Extract all valid time_us values to find min and max
+    # Collect time_us to quickly check if the trace can cover 20 RTT intervals
     time_us_list = [
         int(l.split(',')[0]) for l in lines
         if l.strip() and not l.startswith("time_us") and not l.startswith("Attaching")
     ]
-    if len(time_us_list) == 0:
+    if not time_us_list:
         return None
 
     min_time = min(time_us_list)
     max_time = max(time_us_list)
     trace_duration = max_time - min_time
 
-    if trace_duration < RTT_INTERVAL_NS * 20:
+    if trace_duration < TOTAL_INTERVAL_NS:
         return None
 
-    max_start_time = max_time - RTT_INTERVAL_NS * 20
+    max_start_time = max_time - TOTAL_INTERVAL_NS
     file_data = []
     attempts = 0
     max_attempts = 500
     seen = set()
-    # print("max_start_time: ", max_start_time)
 
     while len(file_data) < 50 and attempts < max_attempts:
         start_idx = random.randint(0, len(lines) - 1)
@@ -162,6 +226,7 @@ def build_dataset_rtt_50_sample(trace_dirs, save_path):
         pickle.dump(dataset, f)
 
     print(f"Dataset saved to {save_path}")
+
 
 if __name__ == "__main__":
     TRACE_DIRS = [
