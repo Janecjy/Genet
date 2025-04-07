@@ -24,7 +24,7 @@ kprobe:tcp_rcv_established
 {
   $sock = (struct sock *)arg0;
   $tcps = (struct tcp_sock *)arg0;
-  printf("%lld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+  printf("%lld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
     elapsed,
     $tcps->srtt_us,
     $tcps->rttvar_us,
@@ -35,6 +35,7 @@ kprobe:tcp_rcv_established
     $tcps->lost_out,
     $tcps->snd_cwnd,
     $sock->sk_sndbuf,
-    $sock->sk_wmem_queued
+    $sock->sk_wmem_queued,
+    $tcps->delivered
   );
 }
