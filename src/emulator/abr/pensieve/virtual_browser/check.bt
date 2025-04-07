@@ -3,7 +3,7 @@
 #include <linux/tcp.h>
 BEGIN {
   printf("time_us,srtt(us),rttvar,rate_delivered,rate_interval_us,mss_cache,lost,lost_out,snd_cwnd,sk_sndbuf,");
-  printf("sk_wmem_queued\n");
+  printf("sk_wmem_queued,delivered\n");
 }
 
 /**

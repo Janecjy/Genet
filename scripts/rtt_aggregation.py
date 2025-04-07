@@ -9,7 +9,7 @@ RTT_INTERVAL_NS = 80_000_000
 TOTAL_INTERVAL_NS = 20 * RTT_INTERVAL_NS
 SAMPLE_INTERVAL_NS = 10_000_000  # 10 ms in nanoseconds
 
-def sample_block(block, block_start, block_end, pre_pkt_lost, dt_pre, pre_cwnd):
+def sample_block(block, block_start, block_end, pre_pkt_lost, dt_pre, pre_cwnd, pre_delivered=0):
     """
     Within [block_start, block_end), collect lines every 10 ms, 
     then compute f2..f6 from those sampled lines. For f5, f6, we also average 
@@ -46,15 +46,21 @@ def sample_block(block, block_start, block_end, pre_pkt_lost, dt_pre, pre_cwnd):
         # f2, f3, f4
         srtt_vals.append(line['srtt'] / 100000.0)
         rttvar_vals.append(line['rttvar'] / 1000.0)
-        rate_vals.append(line['rate_delivered'] / 125000.0 / 100.0)
+        # rate_vals.append(line['delivered'] / 125000.0 / 100.0)
+
+        # Compute line-based f4 (delivered rate)
+        delivered = line['delivered']
+        time_us = line['time_us']
+        mss = line['mss_cache']
+        dt = time_us - dt_pre if dt_pre > 0 else 1
+        dt_pre = time_us
+
+        delivered_rate = (delivered - pre_delivered) * mss * 80 / dt if delivered > pre_delivered else 0
+        pre_delivered = delivered
+        rate_vals.append(delivered_rate)
 
         # Compute line-based f5 (loss-based bandwidth)
         lost = line['lost']
-        mss = line['mss_cache']
-        time_us = line['time_us']
-
-        dt = time_us - dt_pre if dt_pre > 0 else 1
-        dt_pre = time_us
 
         l_db = (lost - pre_pkt_lost) * mss if lost > pre_pkt_lost else 0
         pre_pkt_lost = lost
@@ -86,7 +92,7 @@ def sample_block(block, block_start, block_end, pre_pkt_lost, dt_pre, pre_cwnd):
     f5_avg = np.mean(f5_vals)
     f6_avg = np.mean(f6_vals)
 
-    return [f1, srtt_avg, rttvar_avg, rate_avg, f5_avg, f6_avg], pre_pkt_lost, dt_pre, pre_cwnd
+    return [f1, srtt_avg, rttvar_avg, rate_avg, f5_avg, f6_avg], pre_pkt_lost, dt_pre, pre_cwnd, pre_delivered
 
 
 def build_sample(lines, start_idx):
@@ -107,7 +113,7 @@ def build_sample(lines, start_idx):
                 'time_us': time_us,
                 'srtt': float(cols[1]),
                 'rttvar': float(cols[2]),
-                'rate_delivered': float(cols[3]),
+                'delivered': float(cols[11]),
                 'rate_interval_us': float(cols[4]),
                 'mss_cache': int(cols[5]),
                 'lost': int(cols[6]),
@@ -126,6 +132,7 @@ def build_sample(lines, start_idx):
     pre_pkt_lost = 0
     dt_pre = 0
     pre_cwnd = 0
+    pre_delivered = 0
 
     t0 = parsed[0]['time_us']
     rtt_idx = 0
@@ -137,8 +144,8 @@ def build_sample(lines, start_idx):
         if not block:
             return None
 
-        block_features, pre_pkt_lost, dt_pre, pre_cwnd = sample_block(
-            block, interval_start, interval_end, pre_pkt_lost, dt_pre, pre_cwnd
+        block_features, pre_pkt_lost, dt_pre, pre_cwnd, pre_delivered = sample_block(
+            block, interval_start, interval_end, pre_pkt_lost, dt_pre, pre_cwnd, pre_delivered
         )
 
         if block_features is None:
