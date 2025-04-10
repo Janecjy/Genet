@@ -33,7 +33,7 @@ def sample_block(block, block_start, block_end, pre_pkt_lost, dt_pre, pre_cwnd, 
 
     # If we didn't sample any lines in this block, can't compute features
     if not sampled:
-        return None, pre_pkt_lost, dt_pre, pre_cwnd
+        return None, pre_pkt_lost, dt_pre, pre_cwnd, pre_delivered
 
     # We'll store all per-line computations in lists
     srtt_vals = []
