@@ -258,8 +258,8 @@ def build_dataset_rtt_50_sample(trace_dirs, save_path_prefix):
 
 if __name__ == "__main__":
     TRACE_DIRS = [
-        "/users/janechen/Genet/data/abr/unum/BBA_0_60_40",
-        "/users/janechen/Genet/data/abr/unum/RobustMPC_0_60_40"
+        "/mydata/results/04_07_collect/BBA_0_60_40",
+        "/mydata/results/04_07_collect/RobustMPC_0_60_40"
     ]
     OUTPUT_PATH = "/mydata/pensieve_rtt_20"
 
