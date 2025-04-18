@@ -138,10 +138,10 @@ def build_sample(lines, start_idx):
         return None
 
     sample = []
-    pre_pkt_lost = 0
-    dt_pre = 0
-    pre_cwnd = 0
-    pre_delivered = 0
+    pre_pkt_lost = parsed[0]['lost']
+    dt_pre = parsed[0]['time_us']
+    pre_cwnd = parsed[0]['snd_cwnd']
+    pre_delivered = parsed[0]['delivered']
 
     t0 = parsed[0]['time_us']
     rtt_idx = 0
@@ -267,9 +267,9 @@ def build_dataset_rtt_50_sample(trace_dirs, save_path_prefix):
 
 if __name__ == "__main__":
     TRACE_DIRS = [
-        "/mydata/results/04_07_collect/BBA_0_60_40",
-        "/mydata/results/04_07_collect/RobustMPC_0_60_40"
+        "/home/jane/Genet/data/abr/unum/BBA_0_60_40",
+        "/home/jane/Genet/data/abr/unum/RobustMPC_0_60_40"
     ]
-    OUTPUT_PATH = "/mydata/pensieve_rtt_20"
+    OUTPUT_PATH = "./pensieve_rtt_20"
 
     build_dataset_rtt_50_sample(TRACE_DIRS, OUTPUT_PATH)
