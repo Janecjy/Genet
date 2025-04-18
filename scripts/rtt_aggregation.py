@@ -34,7 +34,7 @@ def sample_block(block, block_start, block_end, pre_pkt_lost, dt_pre, pre_cwnd, 
 
     # If we didn't sample any lines in this block, can't compute features
     if not sampled:
-        return None, pre_pkt_lost, dt_pre, pre_cwnd
+        return None, pre_pkt_lost, dt_pre, pre_cwnd, pre_delivered
 
     # We'll store all per-line computations in lists
     srtt_vals = []
@@ -218,7 +218,7 @@ def process_one_file(filepath):
         print(f"[{fname}] Skipped (no valid samples)")
         return None
 
-def build_dataset_rtt_50_sample(trace_dirs, save_path):
+def build_dataset_rtt_50_sample(trace_dirs, save_path_prefix):
     all_out_files = []
     for d in trace_dirs:
         files = [os.path.join(d, f) for f in os.listdir(d) if f.endswith(".out")]
@@ -229,26 +229,47 @@ def build_dataset_rtt_50_sample(trace_dirs, save_path):
     with Pool(processes=cpu_count()) as pool:
         results = pool.map(process_one_file, all_out_files)
 
-    all_data = [r for r in results if r is not None]
+    synthetic_data = []
+    real_data = []
 
-    if all_data:
-        dataset = np.concatenate(all_data, axis=0)
+    for file, result in zip(all_out_files, results):
+        if result is not None:
+            if "synthetic" in os.path.basename(file).lower():
+                synthetic_data.append(result)
+            else:
+                real_data.append(result)
+
+    # Concatenate and save datasets
+    if synthetic_data:
+        synthetic_dataset = np.concatenate(synthetic_data, axis=0)
     else:
-        dataset = np.empty((0, 20, 6), dtype=np.float32)
+        synthetic_dataset = np.empty((0, 20, 6), dtype=np.float32)
 
-    print("Final dataset shape:", dataset.shape)
+    if real_data:
+        real_dataset = np.concatenate(real_data, axis=0)
+    else:
+        real_dataset = np.empty((0, 20, 6), dtype=np.float32)
 
-    with open(save_path, "wb") as f:
-        pickle.dump(dataset, f)
+    # Save both datasets
+    synthetic_path = f"{save_path_prefix}_synthetic.p"
+    real_path = f"{save_path_prefix}_real.p"
 
-    print(f"Dataset saved to {save_path}")
+    with open(synthetic_path, "wb") as f:
+        pickle.dump(synthetic_dataset, f)
+    with open(real_path, "wb") as f:
+        pickle.dump(real_dataset, f)
+
+    print(f"Synthetic dataset shape: {synthetic_dataset.shape}")
+    print(f"Real dataset shape: {real_dataset.shape}")
+    print(f"Synthetic dataset saved to {synthetic_path}")
+    print(f"Real dataset saved to {real_path}")
 
 
 if __name__ == "__main__":
     TRACE_DIRS = [
-        "/users/janechen/Genet/data/abr/unum/BBA_0_60_40",
-        "/users/janechen/Genet/data/abr/unum/RobustMPC_0_60_40"
+        "/mydata/results/04_07_collect/BBA_0_60_40",
+        "/mydata/results/04_07_collect/RobustMPC_0_60_40"
     ]
-    OUTPUT_PATH = "/mydata/pensieve_rtt_random.p"
+    OUTPUT_PATH = "/mydata/pensieve_rtt_20"
 
     build_dataset_rtt_50_sample(TRACE_DIRS, OUTPUT_PATH)
