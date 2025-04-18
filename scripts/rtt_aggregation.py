@@ -17,6 +17,7 @@ def sample_block(block, block_start, block_end, pre_pkt_lost, dt_pre, pre_cwnd, 
     """
     # Sort block by time_us so we process lines in ascending time
     block_sorted = sorted(block, key=lambda x: x['time_us'])
+    dt_pre = block_sorted[0]['time_us'] if dt_pre == 0 else dt_pre
 
     sampled = []
     next_collect_time = block_start + SAMPLE_INTERVAL_NS
@@ -53,10 +54,18 @@ def sample_block(block, block_start, block_end, pre_pkt_lost, dt_pre, pre_cwnd, 
         time_us = line['time_us']
         mss = line['mss_cache']
         dt = time_us - dt_pre if dt_pre > 0 else 1
-        dt_pre = time_us
 
         delivered_rate = (delivered - pre_delivered) * mss * 80 / dt if delivered > pre_delivered else 0
+        # print("delivered_rate", delivered_rate)
+        # print("delivered", delivered)
+        # print("pre_delivered", pre_delivered)
+        # print("dt", dt)
+        # print("time_us", time_us)
+        # print("dt_pre", dt_pre)
+        # print("mss", mss)
+        # exit(0)
         pre_delivered = delivered
+        dt_pre = time_us
         rate_vals.append(delivered_rate)
 
         # Compute line-based f5 (loss-based bandwidth)
