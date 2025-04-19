@@ -104,7 +104,13 @@ S_INFO = 6
 S_LEN = 6
 EMBEDDING_SIZE = 32
 
-def compute_token_from_parsed_lines(parsed_lines):
+def bucketize_value(value, boundaries):
+        if not boundaries:
+            return 0
+        idx = np.searchsorted(boundaries, value, side='left')
+        return idx
+
+def compute_token_from_parsed_lines(parsed_lines, boundaries_dict):
     """
     Takes in parsed bpftrace lines (list of dicts) and computes a (1, 10, 6) token array.
     """
@@ -167,17 +173,27 @@ def compute_token_from_parsed_lines(parsed_lines):
             f6_vals.append(cwnd / pre_cwnd if pre_cwnd > 0 else 0.0)
             pre_cwnd = cwnd
 
-        metrics_data.append([
+        # Compute the 6 features
+        avg_features = [
             0.8,
             np.mean(srtt_vals),
             np.mean(rttvar_vals),
             np.mean(rate_vals),
             np.mean(f5_vals),
             np.mean(f6_vals)
-        ])
+        ]
+        metrics_data.append(avg_features)
 
-    return np.array([metrics_data], dtype=np.float32)
+        # Now perform bucketization on features 1-5 (index 1 to 5)
+        token = []
+        for feat_idx in range(1, 6):
+            val = avg_features[feat_idx]
+            bds = boundaries_dict.get(feat_idx, [])
+            b_idx = bucketize_value(val, bds)
+            token.append(b_idx)
 
+    # Final output
+    return np.array(token, dtype=np.float32)
 
 def add_embedding(state, tokens, embeddings):
     """
@@ -294,8 +310,7 @@ def null_embedding_and_token():
     tokens = np.array([])
     return embedding, tokens
 
-
-def transform_state_and_add_embedding(agent_id, state, embeddings, tokens, token_reader):
+def transform_state_and_add_embedding(agent_id, state, embeddings, tokens, token_reader, boundaries):
     """
     For a given agent, update state with embedding from recent RTT tokens.
 
@@ -313,7 +328,7 @@ def transform_state_and_add_embedding(agent_id, state, embeddings, tokens, token
     print(f"[Agent {agent_id}] State shape before embedding: {state.shape}")
 
     parsed_lines = token_reader.get_recent_parsed_lines()
-    new_tokens = compute_token_from_parsed_lines(parsed_lines)
+    new_tokens = compute_token_from_parsed_lines(parsed_lines, boundaries)
 
     if new_tokens.size > 0:
         tokens = np.concatenate((tokens, new_tokens), axis=0) if tokens.size > 0 else new_tokens

@@ -2,11 +2,11 @@ import os
 import csv
 import time
 import math
-import math
 import numpy as np
 import torch
 import torch.multiprocessing as mp
 import tensorflow as tf
+import pickle
 # import logger
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -42,14 +42,6 @@ DEFAULT_QUALITY = 0  # default video quality without agent
 BITRATE_DIM = 6
 # DEVICE = 'cpu'
 # EMBEDDING_SIZE = 16
-
-BUCKET_BOUNDARIES = {
-    1: [0.12, 0.2, 0.28, 0.43, 0.55, 0.83, 1.03, 1.29, 1.63, 2.12, 3.64, 4.02, 5.74, 8, 12, 14],
-    2: [0.01, 0.3, 0.38, 0.44, 0.49, 0.54, 0.6, 0.68, 0.84, 1.41, 3, 5, 205, 395, 1206],
-    3: [0.01, 0.08, 0.11, 0.15, 0.23, 0.45, 0.8, 0.9, 1, 1.75],
-    4: [0.0002, 0.0047, 0.0361, 0.1, 0.2, 0.3],
-    5: [0.75, 1, 1.001, 1.003, 1.012, 1.25, 3.52, 4.7, 5.39, 6.26]
-}
 
 # bit_rate, buffer_size, next_chunk_size, bandwidth_measurement(throughput and
 # time), chunk_til_video_end
@@ -830,7 +822,8 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
     bpftrace_path = get_bftrace_out_path(agent_id)
     token_reader = BPFTraceTokenCache(bpftrace_path)
-
+    with open('/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/boundaries-quantile50-merged.pkl', "rb") as f:
+        boundaries_dict = pickle.load(f)
 
     # Initialize min and max tracking arrays
     min_raw_adaptor_input = None
@@ -949,7 +942,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                 agent_logger.info(f"[Agent {agent_id}] recv_state: {recv_state}, end_of_video: {end_of_video}")
                 # If state received, process it
                 if recv_state:
-                    state, embeddings, tokens = rl_embedding.transform_state_and_add_embedding(agent_id, state, embeddings, tokens, token_reader)                    
+                    state, embeddings, tokens = rl_embedding.transform_state_and_add_embedding(agent_id, state, embeddings, tokens, token_reader, boundaries_dict)                    
                     r_batch.append(reward)
 
                     # First, ensure embeddings is 1D before normalization
