@@ -6,6 +6,7 @@ import torch
 from models import create_mask
 from collections import defaultdict
 import math
+from bpftrace_reader import BPFTraceTokenCache
 
 AGGREGATION_WINDOW_MS = 80 
 WINDOW = 10
@@ -17,7 +18,7 @@ DEVICE = 'cpu'
 
 
 
-transformer = torch.load("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/Checkpoint-Combined_10RTT_6col_Transformer3_64_5_5_16_4_lr_1e-05-999iter.p", map_location='cpu')
+transformer = torch.load("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/Checkpoint-Combined_10RTT_6col_Transformer3_256_4_4_32_4_lr_0.0001_boundaries-quantile50-merged_multi-559iter.p", map_location='cpu')
 transformer.eval()
 
 
@@ -95,107 +96,87 @@ def get_bftrace_out_path(agent_id, collection=False, summary_dir=None, trace_nam
 # Embedding functions
 ################################################################################
 
-def compute_token(bpftrace_path):
-    """
-    Spawns the TokenAggregator, which continuously reads bpftrace_output.txt
-    and puts tokens into `token_queue`.
-    """
-    aggregator = TCPStatsAggregator()
-    metrics_data = []
-    window_duration = 80
-    
-    try:
-        last_line = get_last_line(bpftrace_path)
-        last_time_ms = float(last_line.strip().split(',')[0]) / 1000000
-        # print("last_time_ms: ", last_time_ms)
-    except Exception as e:
-        print(f"Error reading the last line: {e}")
-        return np.array(metrics_data)
-    first_time_ms = None
-    with open(bpftrace_path, "r") as f:
-        f.readline()
-        rtt_window_count = 10 
-        lost_packets = 0
-        pre_cwnd = 0
-        for line in f:
-            if line.startswith('A') or line.startswith('t'):
-                print(f"Skipping line with invalid data")
-                continue
-            parts = line.strip().split(',')
-            if len(parts) < 9:
-                # Ensure there are enough parts to prevent IndexError
-                print(f"Skipping line with insufficient data")
-                continue
-            try:
-                current_time_ns = float(parts[0])
-                current_time_ms = current_time_ns / 1000000
-                time_diff = last_time_ms - current_time_ms
-                if not first_time_ms:
-                    first_time_ms = current_time_ms
-                    print("first_time_ms: ", first_time_ms)
-            except ValueError:
-                # Skip lines with invalid numerical data
-                print(f"Skipping line with invalid numerical data")
-                continue
-            if time_diff < rtt_window_count * window_duration and current_time_ms <= last_time_ms:
-                if not aggregator.window_start_time:
-                    aggregator.window_start_time = current_time_ms
-                
-                # Determine if we've moved into a new window
-                if time_diff <= (rtt_window_count - 1) * window_duration:
-                    rtt_window_count -= 1
-                    print("time_diff: ", time_diff)
-                    print("rtt_window_count: ", rtt_window_count)
-                    print("window_duration: ", window_duration)
-                    # Aggregate data for the current window
-                    stats = aggregator.aggregate_window_data()
-                    if stats:
-                        metrics_data.append([
-                            0.7/1.5,
-                            stats['rtt_ms'],
-                            stats['rttvar_ms'],
-                            stats['delivery_rate'],
-                            stats['l_w_mbps'],
-                            stats['cwnd_rate']
-                        ])
+import numpy as np
 
-                        print(f"Window starts {stats['window_start']:.2f}ms "
-                            f"({stats['num_packets']} packets):\n"
-                            f"  Average RTT: {stats['rtt_ms']:.2f}ms\n"
-                            f"  RTT Variance: {stats['rttvar_ms']:.2f}ms\n"
-                            f"  Delivery Rate: {stats['delivery_rate']:.2f}\n"
-                            f"  L W mbps: {stats['l_w_mbps']:.2f}\n"
-                            f"  Cwnd rate: {stats['cwnd_rate']:.2f}\n")
-                    
-                    aggregator = TCPStatsAggregator()
-                    aggregator.window_start_time = current_time_ms
-                
-                lost_packets += float(parts[6])
-                
-                if current_time_ms - aggregator.window_start_time > WINDOW:
-                    aggregator.window_data['time_ms'].append(current_time_ms)
-                    aggregator.window_data['srtt_us'].append(parts[1])
-                    aggregator.window_data['rttvar'].append(parts[2])
-                    rate_interval = float(parts[4])
-                    if rate_interval == 0:
-                        rate_interval = 1
-                    aggregator.window_data['delivery_rate'].append(float(parts[3])*float(parts[5])*1000000 / rate_interval)
-                    aggregator.window_data['l_w_mbps'].append(lost_packets/window_duration)
-                    cwnd = float(parts[-3])
-                    if pre_cwnd>0:
-                        target_cwnd = cwnd/pre_cwnd
-                        cwnd_rate = round(math.log2(target_cwnd)*1000)/1000
-                    else:
-                        cwnd_rate = math.log2(0.0001)
-                    aggregator.window_data['cwnd_rate'].append(cwnd_rate)
-                    lost_packets = 0
-                    pre_cwnd = cwnd
-    
-    # Convert to numpy array and save
-    metrics_array = np.array(metrics_data)
-    # np.save('tcp_metrics_reno_trace_file_1.npy', metrics_array)
-    # open(bpftrace_path, 'w').close()  # simple truncation
-    return metrics_array
+AGGREGATION_WINDOW_MS = 80
+WINDOW = 10  # sample every 10ms
+S_INFO = 6
+S_LEN = 6
+EMBEDDING_SIZE = 32
+
+def compute_token_from_parsed_lines(parsed_lines):
+    """
+    Takes in parsed bpftrace lines (list of dicts) and computes a (1, 10, 6) token array.
+    """
+    if not parsed_lines:
+        return np.empty((0, 20, 6), dtype=np.float32)
+
+    last_time_ms = parsed_lines[-1]['time_ms']
+    rtt_window_count = 10
+    total_window_start = last_time_ms - (AGGREGATION_WINDOW_MS * rtt_window_count)
+
+    parsed_lines = [l for l in parsed_lines if l['time_ms'] >= total_window_start]
+    if len(parsed_lines) == 0:
+        return np.empty((0, 20, 6), dtype=np.float32)
+
+    metrics_data = []
+
+    pre_pkt_lost = parsed_lines[0]['lost']
+    pre_delivered = parsed_lines[0]['delivered']
+    pre_cwnd = parsed_lines[0]['snd_cwnd']
+    dt_pre = parsed_lines[0]['time_ms']
+
+    for window_idx in range(rtt_window_count):
+        interval_start = total_window_start + window_idx * AGGREGATION_WINDOW_MS
+        interval_end = interval_start + AGGREGATION_WINDOW_MS
+        block = [l for l in parsed_lines if interval_start <= l['time_ms'] < interval_end]
+
+        if not block:
+            return np.empty((0, 20, 6), dtype=np.float32)
+
+        block_sorted = sorted(block, key=lambda x: x['time_ms'])
+
+        samples = []
+        t = interval_start + WINDOW
+        while t <= interval_end:
+            candidates = [l for l in block_sorted if l['time_ms'] >= t]
+            if candidates:
+                samples.append(candidates[0])
+            t += WINDOW
+
+        if not samples:
+            return np.empty((0, 20, 6), dtype=np.float32)
+
+        srtt_vals, rttvar_vals, rate_vals, f5_vals, f6_vals = [], [], [], [], []
+
+        for s in samples:
+            srtt_vals.append(s['srtt'] / 100000.0)
+            rttvar_vals.append(s['rttvar'] / 1000.0)
+
+            dt = (s['time_ms'] - dt_pre) * 1000 if dt_pre > 0 else 1
+            delivered_rate = (s['delivered'] - pre_delivered) * s['mss'] * 80 / dt if s['delivered'] > pre_delivered else 0
+            rate_vals.append(delivered_rate)
+            dt_pre = s['time_ms']
+            pre_delivered = s['delivered']
+
+            l_db = (s['lost'] - pre_pkt_lost) * s['mss'] if s['lost'] > pre_pkt_lost else 0
+            f5_vals.append(8.0 * l_db / dt / 100.0 if dt > 0 else 0.0)
+            pre_pkt_lost = s['lost']
+
+            cwnd = s['snd_cwnd']
+            f6_vals.append(cwnd / pre_cwnd if pre_cwnd > 0 else 0.0)
+            pre_cwnd = cwnd
+
+        metrics_data.append([
+            0.8,
+            np.mean(srtt_vals),
+            np.mean(rttvar_vals),
+            np.mean(rate_vals),
+            np.mean(f5_vals),
+            np.mean(f6_vals)
+        ])
+
+    return np.array([metrics_data], dtype=np.float32)
 
 
 def add_embedding(state, tokens, embeddings):
@@ -314,19 +295,32 @@ def null_embedding_and_token():
     return embedding, tokens
 
 
-def transform_state_and_add_embedding(agent_id, state, embeddings, tokens):
-    bpftrace_out_path = get_bftrace_out_path(agent_id)
+def transform_state_and_add_embedding(agent_id, state, embeddings, tokens, token_reader):
+    """
+    For a given agent, update state with embedding from recent RTT tokens.
+
+    Args:
+        agent_id (int): The ID of the agent.
+        state (np.ndarray): The current state [S_INFO, S_LEN].
+        embeddings (np.ndarray): Current embedding vector.
+        tokens (np.ndarray): Previously collected RTT token vectors.
+        token_reader (BPFTraceTokenCache): Per-agent token reader instance.
+
+    Returns:
+        (np.ndarray, np.ndarray, np.ndarray): updated state, embeddings, and tokens
+    """
     state = np.array(state)
-    print(f"State shape before embedding: {state.shape}")
-    
-    # Compute tokens and embed
-    if tokens.shape[0] > WINDOW:
-        tokens = np.concatenate((tokens, compute_token(bpftrace_out_path)), axis=0)
-        # only keep the last WINDOW size of tokens
+    print(f"[Agent {agent_id}] State shape before embedding: {state.shape}")
+
+    parsed_lines = token_reader.get_recent_parsed_lines()
+    new_tokens = compute_token_from_parsed_lines(parsed_lines)
+
+    if new_tokens.size > 0:
+        tokens = np.concatenate((tokens, new_tokens), axis=0) if tokens.size > 0 else new_tokens
         tokens = tokens[-WINDOW:]
-    else:
-        tokens = compute_token(bpftrace_out_path)
-    print(f"add_embedding1 state shape: {state.shape}")
-    # print(f"Tokens: {tokens}")
-    embeddings = add_embedding(state, tokens, embeddings)
+
+        print(f"[Agent {agent_id}] add_embedding state shape: {state.shape}")
+        embeddings = add_embedding(state, tokens, embeddings)
+
     return state, embeddings, tokens
+

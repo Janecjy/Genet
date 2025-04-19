@@ -27,6 +27,7 @@ from emulator.abr.pensieve.a3c.a3c_jump import ActorNetwork as OriginalActorNetw
 from models import *
 import rl_embedding
 from rl_embedding import *
+from bpftrace_reader import BPFTraceTokenCache
 # from .models import create_mask
 
 MODEL_SAVE_INTERVAL = 500
@@ -827,6 +828,10 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
     )
     agent_logger.info("Agent %d started!", agent_id)
 
+    bpftrace_path = get_bftrace_out_path(agent_id)
+    token_reader = BPFTraceTokenCache(bpftrace_path)
+
+
     # Initialize min and max tracking arrays
     min_raw_adaptor_input = None
     max_raw_adaptor_input = None
@@ -944,7 +949,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                 agent_logger.info(f"[Agent {agent_id}] recv_state: {recv_state}, end_of_video: {end_of_video}")
                 # If state received, process it
                 if recv_state:
-                    state, embeddings, tokens = rl_embedding.transform_state_and_add_embedding(agent_id, state, embeddings, tokens)                    
+                    state, embeddings, tokens = rl_embedding.transform_state_and_add_embedding(agent_id, state, embeddings, tokens, token_reader)                    
                     r_batch.append(reward)
 
                     # First, ensure embeddings is 1D before normalization
