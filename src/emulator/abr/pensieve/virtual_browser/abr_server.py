@@ -78,6 +78,8 @@ def make_request_handler(server_states):
             self.agent_id = server_states['agent_id'] #"0"#os.path.basename(self.summary_dir).split("_")[1]
             self.embedding = server_states['embedding']
             self.tokens = server_states['tokens']
+            self.bpftrace_path = rl_embedding.get_bftrace_out_path(self.agent_id)
+            self.token_reader = rl_embedding.BPFTraceTokenCache(self.bpftrace_path)
     
             print("Agent ID {}".format(self.agent_id))
             # print("Redis keys {}".format(redis_client.keys()))
@@ -224,7 +226,7 @@ def make_request_handler(server_states):
                     if self.embedding is not None and self.tokens is not None:
                         use_embedding = True
                         redis_pipe.set(f"{self.agent_id}_use_embedding", int(True))
-                        state, self.embedding, self.tokens =  rl_embedding.transform_state_and_add_embedding(self.agent_id, state, self.embedding, self.tokens)
+                        state, self.embedding, self.tokens =  rl_embedding.transform_state_and_add_embedding(self.agent_id, state, self.embedding, self.tokens, self.token_reader)
                         self.logger.info(f"Embedding transformed: {self.embedding}") 
                     
                     bit_rate = self.abr.select_action(
