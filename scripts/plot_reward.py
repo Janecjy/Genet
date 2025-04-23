@@ -1,132 +1,135 @@
 import os
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 
-# Define result directories
-RESULTS_DIR = "/home/jane/Genet/scripts/03_22_model_set"
-PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/synthetic_test_mahimahi")
-UNUM_DIR = os.path.join(RESULTS_DIR, "03_22_model_set/03_22_model_set")
+# ------------------ Directories ---------------------
+RESULTS_DIR = "/home/jane/Genet/scripts/04_20_model_set"
+PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/testing_trace_mahimahi")
+UNUM_DIR = os.path.join(RESULTS_DIR, "04_20_model_set/04_20_model_set")
 
-# Define model configurations (same as training script)
+# ---------------- Configurations ---------------------
 adaptor_inputs = ["original_selection", "hidden_state"]
 adaptor_hidden_layers = [128, 256]
 seeds = [10, 20, 30, 40, 50]
+target_model_name = "action_256_20"
 
-# Generate (input, hidden, seed) mappings for each server
-adaptor_configs = []
-for seed in seeds:
-    for input_type in adaptor_inputs:
-        for hidden_layer in adaptor_hidden_layers:
-            adaptor_configs.append((input_type, hidden_layer, seed))
+adaptor_configs = [(inp, hl, s) for s in seeds for inp in adaptor_inputs for hl in adaptor_hidden_layers]
 
 def get_model_config(server_id):
-    """Maps server ID to corresponding (input, hidden, seed) configuration."""
     index = (server_id - 1) % len(adaptor_configs)
     adaptor_input, hidden_layer, seed = adaptor_configs[index]
-    model_name = f"{'action' if adaptor_input == 'original_selection' else 'hidden'}_{hidden_layer}_{seed}"
-    return model_name
+    return f"{'action' if adaptor_input == 'original_selection' else 'hidden'}_{hidden_layer}_{seed}"
 
-# Function to check if log file has more than 2 rows
 def is_valid_log(log_path):
     try:
         df = pd.read_csv(log_path, delim_whitespace=True)
         return 'reward' in df.columns and len(df) > 2
-    except Exception as e:
-        print(f"Error reading {log_path}: {e}")
-    return False
+    except:
+        return False
 
-# Function to read a log file and compute mean reward (excluding the first row)
 def compute_mean_reward(log_path):
     try:
         df = pd.read_csv(log_path, delim_whitespace=True)
         if 'reward' in df.columns and len(df) > 1:
-            return df['reward'][1:].mean()  # Exclude the first row
-        else:
-            return None
-    except Exception as e:
-        print(f"Error reading {log_path}: {e}")
+            return df['reward'][1:].mean()
+    except:
         return None
+    return None
 
-# Step 1: Collect all available log files
-pensieve_logs = {file: os.path.join(PENSIEVE_DIR, file) for file in os.listdir(PENSIEVE_DIR) if file.startswith("log_RL_trace_")}
-unum_models = {model: os.path.join(UNUM_DIR, model) for model in os.listdir(UNUM_DIR) if model.startswith("server_")}
+def get_trace_filter_prefix(trace_type):
+    return f"log_RL_{trace_type}-test_"
 
-# Step 2: Find common traces across all models
-common_traces = set(pensieve_logs.keys())
-model_rewards = {}
+# ----------------- Compute ratio for each trace type ----------------------
+ratios = {}
+for trace_type in ['fcc', 'norway']:
+    prefix = get_trace_filter_prefix(trace_type)
 
-for model, model_path in unum_models.items():
-    server_id = int(model.split('_')[1])
-    model_name = get_model_config(server_id)
-    model_rewards[model] = {"name": model_name, "path": model_path, "rewards": []}
-    model_traces = {trace for trace in pensieve_logs.keys()
-                     if os.path.exists(os.path.join(model_path, "UDR-3_0_60_40", trace)) and is_valid_log(os.path.join(model_path, "UDR-3_0_60_40", trace))}
-    common_traces &= model_traces
+    # Collect Pensieve traces
+    pensieve_logs = {
+        file: os.path.join(PENSIEVE_DIR, file)
+        for file in os.listdir(PENSIEVE_DIR)
+        if file.startswith(prefix)
+    }
 
-print("Common traces:", common_traces)
+    # Collect Unum models
+    unum_models = {
+        model: os.path.join(UNUM_DIR, model)
+        for model in os.listdir(UNUM_DIR) if model.startswith("server_")
+    }
 
-# Step 3: Compute mean rewards per model
-pensieve_mean_rewards = []
-unum_mean_rewards = {}
+    # Get model config map
+    model_config_map = {}
+    for model, model_path in unum_models.items():
+        server_id = int(model.split('_')[1])
+        model_name = get_model_config(server_id)
+        model_config_map[model] = model_name
 
-for trace_file in common_traces:
-    # Compute Pensieve-original mean reward
-    pensieve_reward = compute_mean_reward(pensieve_logs[trace_file])
-    if pensieve_reward is not None:
-        pensieve_mean_rewards.append(pensieve_reward)
+    # Identify common traces available across all servers
+    common_traces = set(pensieve_logs.keys())
+    for model, model_path in unum_models.items():
+        for trace_file in list(common_traces):
+            trace_path = os.path.join(model_path, "UDR-3_0_60_40", trace_file)
+            if not os.path.exists(trace_path) or not is_valid_log(trace_path):
+                common_traces.discard(trace_file)
 
-    # Compute Unum-adaptor model rewards
-    for model, model_data in model_rewards.items():
-        trace_path = os.path.join(model_data["path"], "UDR-3_0_60_40", trace_file)
-        if os.path.exists(trace_path):
+    if not common_traces:
+        print(f"No common traces for {trace_type}")
+        continue
+
+    # Compute Pensieve rewards
+    pensieve_rewards = []
+    for trace_file in common_traces:
+        reward = compute_mean_reward(pensieve_logs[trace_file])
+        if reward is not None:
+            pensieve_rewards.append(reward)
+
+    pensieve_mean = sum(pensieve_rewards) / len(pensieve_rewards) if pensieve_rewards else None
+
+    # Compute Unum-Adptor rewards (only action_256_20)
+    unum_rewards = []
+    for model, model_path in unum_models.items():
+        if model_config_map[model] != target_model_name:
+            continue
+        for trace_file in common_traces:
+            trace_path = os.path.join(model_path, "UDR-3_0_60_40", trace_file)
             reward = compute_mean_reward(trace_path)
             if reward is not None:
-                unum_mean_rewards.setdefault(model, []).append(reward)
+                unum_rewards.append(reward)
 
-# Step 4: Compute final mean rewards
-pensieve_final_mean = sum(pensieve_mean_rewards) / len(pensieve_mean_rewards) if pensieve_mean_rewards else None
-unum_final_means = {model: sum(rewards) / len(rewards) for model, rewards in unum_mean_rewards.items() if rewards}
+    unum_mean = sum(unum_rewards) / len(unum_rewards) if unum_rewards else None
+    print(unum_mean, pensieve_mean)
 
-# Step 5: Map server_X to readable names and sort them
-x_labels = ["pensieve-original"]
-mean_rewards = [pensieve_final_mean]
+    # Store ratio
+    if pensieve_mean and unum_mean:
+        ratios[trace_type.upper()] = (unum_mean-pensieve_mean)/abs(pensieve_mean)*100
 
-# Sort the action and hidden models separately
-action_models = []
-hidden_models = []
+# ----------------- Plot ----------------------
+plt.figure(figsize=(4, 5))
+x = np.arange(len(ratios.keys())) * 0.4 # <--- Multiply by a spacing factor < 1 to reduce the gap
+bar_width = 0.3
+bars = plt.bar(x, ratios.values(), color=['#1f77b4', '#ff7f0e'], width=bar_width)
 
-for model in unum_final_means.keys():
-    model_name = model_rewards[model]["name"]
-    if model_name.startswith("action"):
-        action_models.append((model_name, unum_final_means[model]))
-    else:
-        hidden_models.append((model_name, unum_final_means[model]))
+plt.ylabel("Improvement (%)", fontsize=20)
+plt.xticks(x, ratios.keys(), fontsize=20)
+plt.yticks(fontsize=20)
 
-# Sort both groups alphabetically
-action_models.sort()
-hidden_models.sort()
+for bar, val in zip(bars, ratios.values()):
+    height = bar.get_height()
+    plt.text(bar.get_x() + bar.get_width() / 2, height + 1, f"{val:.2f}%", 
+                ha='center', va='bottom', fontsize=20)
 
-# Append sorted models
-for model_name, mean_reward in action_models:
-    x_labels.append(model_name)
-    mean_rewards.append(mean_reward)
 
-for model_name, mean_reward in hidden_models:
-    x_labels.append(model_name)
-    mean_rewards.append(mean_reward)
-
-# Step 6: Plot the results
-print("Mean rewards:", mean_rewards)
-print("X labels:", x_labels)
-plt.figure(figsize=(12, 6))
-plt.bar(x_labels, mean_rewards, color=['blue'] + ['orange'] * len(action_models) + ['green'] * len(hidden_models))
-plt.xlabel("Model (Adaptor Input_Hidden_Size_Seed)")
-plt.ylabel("Mean Reward")
-plt.title("Comparison of Mean Rewards Across Models")
-plt.xticks(rotation=45, ha="right")  # Rotate labels for better readability
-plt.ylim(-5, 3)
+# plt.title("Unum-Adptor vs Pensieve Mean Reward Ratio", fontsize=14)
+# plt.grid(axis='y')
 plt.tight_layout()
 
-# Save and display the plot
-plt.savefig(os.path.join(RESULTS_DIR, "reward_comparison.png"))
-plt.show()
+plot_path = os.path.join(RESULTS_DIR, "reward_improvement_fcc_norway.png")
+plt.savefig(plot_path)
+# plt.show()
+
+print(f"Saved ratio plot at: {plot_path}")
+
+# height = bar.get_height()
+#         plt.text(bar.get_x() + bar.get_width() / 2, height + 0.01, f"{val:.2%}", 
+#                  ha='center', va='bottom', fontsize=20)

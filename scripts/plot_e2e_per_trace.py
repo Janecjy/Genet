@@ -4,12 +4,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Define directories
-RESULTS_DIR = "/home/jane/Genet/scripts/03_19_model_set"
+RESULTS_DIR = "/home/jane/Genet/scripts/04_20_model_set"
 SCATTER_PLOT_DIR = os.path.join(RESULTS_DIR, "scatter_plots")
 os.makedirs(SCATTER_PLOT_DIR, exist_ok=True)  # Ensure directory exists
 
-PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/synthetic_test_plus_mahimahi")
-UNUM_DIR = os.path.join(RESULTS_DIR, "03_19_model_set/03_19_model_set")
+PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/testing_trace_mahimahi")
+UNUM_DIR = os.path.join(RESULTS_DIR, "04_20_model_set/04_20_model_set")
 
 # Define model configurations (same as training script)
 adaptor_inputs = ["original_selection", "hidden_state"]
@@ -47,11 +47,13 @@ def compute_metrics(log_path):
         return None, None
 
 # Step 1: Collect all available log files for Pensieve-original
-pensieve_logs = {file: os.path.join(PENSIEVE_DIR, file) for file in os.listdir(PENSIEVE_DIR) if file.startswith("log_RL_trace_")}
+pensieve_logs = {file: os.path.join(PENSIEVE_DIR, file) for file in os.listdir(PENSIEVE_DIR)}
 unum_models = {model: os.path.join(UNUM_DIR, model) for model in os.listdir(UNUM_DIR) if model.startswith("server_")}
 
 # Step 2: Process each trace separately
 for trace_file, pensieve_log_path in pensieve_logs.items():
+    if trace_file.startswith("log_RL_trace_"):
+        continue
     trace_name = trace_file.replace("log_", "").replace(".txt", "")
 
     model_metrics = {"pensieve-original": compute_metrics(pensieve_log_path)}
@@ -92,7 +94,7 @@ for trace_file, pensieve_log_path in pensieve_logs.items():
     # Labels and Title
     plt.xlabel("90th Percentile Rebuffering Ratio")
     plt.ylabel("Average Bitrate")
-    plt.title(f"Scatter Plot for {trace_name}")
+    # plt.title(f"Scatter Plot for {trace_name}")
     plt.legend()
     plt.grid(True)
     

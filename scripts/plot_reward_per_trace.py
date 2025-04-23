@@ -3,12 +3,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Define result directories
-RESULTS_DIR = "/home/jane/Genet/scripts/03_22_model_set"
+RESULTS_DIR = "/home/jane/Genet/scripts/04_20_model_set"
 TRACE_COMPARISON_DIR = os.path.join(RESULTS_DIR, "trace_comparisons")
 os.makedirs(TRACE_COMPARISON_DIR, exist_ok=True)  # Ensure directory exists
 
 PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/synthetic_test_mahimahi")
-UNUM_DIR = os.path.join(RESULTS_DIR, "03_22_model_set/03_22_model_set")
+UNUM_DIR = os.path.join(RESULTS_DIR, "04_20_model_set/04_20_model_set")
 
 # Define model configurations (same as training script)
 adaptor_inputs = ["original_selection", "hidden_state"]
@@ -47,6 +47,7 @@ unum_models = {model: os.path.join(UNUM_DIR, model) for model in os.listdir(UNUM
 
 # Step 2: Process each trace separately
 for trace_file, pensieve_log_path in pensieve_logs.items():
+    print(f"Processing Pensieve log: {trace_file}")
     trace_name = trace_file.replace("log_", "").replace(".txt", "")
 
     model_rewards = {"pensieve-original": compute_mean_reward(pensieve_log_path)}
@@ -75,8 +76,11 @@ for trace_file, pensieve_log_path in pensieve_logs.items():
     # Step 5: Generate x-axis labels and mean reward values
     x_labels = ["pensieve-original"] + [m[0] for m in action_models] + [m[0] for m in hidden_models]
     mean_rewards = [model_rewards[label] for label in x_labels]
+    print(f"Trace: {trace_name}")
+    print(model_rewards)
+    # print(mean_rewards)
 
-    if len(x_labels) > 1:
+    if len(x_labels) > 1 and mean_rewards[0]:
 
         # Step 6: Plot the results
         plt.figure(figsize=(12, 6))
