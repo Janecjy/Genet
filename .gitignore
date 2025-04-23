@@ -130,3 +130,4 @@ fig_reproduce/model/*
 fig_reproduce/data/*
 *.ipynb
 data/*
+abr_trace/testing_trace_mahimahi/*

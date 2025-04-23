@@ -6,7 +6,7 @@ import concurrent.futures
 
 # Constants
 USERNAME = "janechen"
-REMOTE_BASE_PATH = "/mydata/results/03_24_collect/"
+REMOTE_BASE_PATH = "/mydata/results/04_07_collect/"
 LOCAL_BASE_PATH = "/home/jane/Genet/data/abr/unum/"
 CONFIG_FILE = "config.yaml"
 

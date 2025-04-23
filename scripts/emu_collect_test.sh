@@ -35,7 +35,7 @@ for node_branch in "${test_nodes[@]}"; do
     echo "Processing $remote_server with branch: $branch"
 
     if [ "$branch" == "sim-reproduce" ]; then
-        REMOTE_RESULTS_DIR="/users/janechen/Genet/src/emulator/abr/pensieve/tests/UDR-3_60_40_/users/janechen/Genet/fig_reproduce/data/synthetic_test_mahimahi/"
+        REMOTE_RESULTS_DIR="/users/janechen/Genet/src/emulator/abr/pensieve/tests/UDR-3_60_40_/users/janechen/Genet/abr_trace/testing_trace_mahimahi/"
         LOCAL_DEST_DIR="$LOCAL_RESULTS_DIR/pensieve-original"
 
     elif [ "$branch" == "unum-adaptor" ]; then

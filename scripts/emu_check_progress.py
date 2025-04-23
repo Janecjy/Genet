@@ -64,12 +64,14 @@ def check_logs_and_update(server_config):
         last_epoch = None
         if log_count == 44:
             print(f"[{server}] Setting run: false in config.yaml")
-            server_config["run"] = False
 
             # Retrieve last epoch number from log_train
             last_epoch = get_last_epoch(client)
             if last_epoch is not None:
                 print(f"[{server}] Last logged epoch: {last_epoch}")
+                if last_epoch > 1:
+                    print(f"[{server}] Setting run: false in config.yaml")
+                    server_config["run"] = False
             else:
                 print(f"[{server}] No epoch found in log_train")
 
@@ -93,7 +95,7 @@ if __name__ == "__main__":
     print("Config file updated.")
 
     # Count how many servers have exactly 44 logs
-    servers_with_44_logs = sum(1 for _, log_count, _ in results if log_count == 44)
+    servers_with_44_logs = sum(1 for _, log_count, last_epoch in results if log_count == 44 and last_epoch and last_epoch > 1)
     total_servers = len(servers)
     servers_still_running = total_servers - servers_with_44_logs
 

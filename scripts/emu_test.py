@@ -4,6 +4,21 @@ import os
 import argparse
 import concurrent.futures
 
+import subprocess
+
+def copy_traces_to_remote(hostname):
+    """Copy Mahimahi traces to the same location on the remote host."""
+    local_path = os.path.expanduser("~/Genet/abr_trace/testing_trace_mahimahi")
+    remote_path = f"{username}@{hostname}:~/Genet/abr_trace/"
+    
+    print(f"Copying Mahimahi traces to {hostname}...")
+    try:
+        subprocess.run(["scp", "-r", local_path, remote_path], check=True)
+        print(f"Traces copied to {hostname}")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to copy traces to {hostname}: {e}")
+
+
 # Load test configuration from testconfig.yaml
 CONFIG_FILE = "testconfig.yaml"
 
@@ -28,7 +43,7 @@ VIDEO_SERVER_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve/video_server/v
 
 # Default argument values
 MODEL_PATH = f"{GENET_BASE_PATH}/fig_reproduce/model/{args.model_dir_name}/"
-TRACE_DIR = f"{GENET_BASE_PATH}/fig_reproduce/data/synthetic_test_mahimahi/"
+TRACE_DIR = f"{GENET_BASE_PATH}/abr_trace/testing_trace_mahimahi/"
 SUMMARY_DIR = args.model_dir_name  # Same as model directory name
 PORT_ID = "6626"
 AGENT_ID = "0"
@@ -37,7 +52,7 @@ EXTRA_ARGS = "--use_embedding"
 LOG_PATH = f"/mydata/logs/emu_test_{args.model_dir_name}.log"  # Log name matches model dir
 
 # Total number of servers to assign
-num_servers = 28  
+num_servers = 8  
 
 # Adjust server distribution if unum-adaptor nodes are fewer than 28
 num_nodes = len(unum_adaptor_nodes)
@@ -62,6 +77,8 @@ def start_remote_test(server, start_id=None, end_id=None):
 
     print(f"Starting tests on {node}...")
 
+    copy_traces_to_remote(node)
+
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -74,7 +91,7 @@ def start_remote_test(server, start_id=None, end_id=None):
         # Commands to run before starting tmux
         commands = [
             "tmux kill-server || true",
-            "rm -rf /mydata/logs/*",
+            # "rm -rf /mydata/logs/*",
             "mkdir -p /mydata/logs",
             f"cd {GENET_BASE_PATH} && git reset --hard && git fetch && git checkout {branch} && git pull",
             f"grep -rl --include='*.py' '10.10.1.2' {GENET_BASE_PATH}/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.2/{redis_ip}/g' || true",
@@ -95,13 +112,14 @@ def start_remote_test(server, start_id=None, end_id=None):
         # Determine script execution
         if branch == "sim-reproduce":
             commands.append(
-                f"tmux send-keys -t {tmux_session_name}:{test_window} 'bash {SIM_SCRIPT_PATH} ' C-m"
+                f"tmux send-keys -t {tmux_session_name}:{test_window} 'bash {SIM_SCRIPT_PATH} {TRACE_DIR}' C-m"
             )
         elif start_id and end_id:
             commands.append(
                 f"tmux send-keys -t {tmux_session_name}:{test_window} "
                 f"'bash {TEST_SCRIPT_PATH} {MODEL_PATH} {TRACE_DIR} {SUMMARY_DIR} {PORT_ID} {AGENT_ID} {EXTRA_ARGS} {SEED} {start_id} {end_id}' C-m"
             )
+            print("Running test script with command:", commands[-1])
 
         commands.append("tmux ls")
 
@@ -130,6 +148,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=len(config["test_servers"
 
     # Start test runs on `unum-adaptor` nodes (with assigned server IDs)
     for server, start_id, end_id in server_ranges:
+        print(f"Starting test on {server['hostname']} with server IDs {start_id} to {end_id}")
         futures[executor.submit(start_remote_test, server, start_id, end_id)] = server["hostname"]
 
     # Start sim-reproduce script execution

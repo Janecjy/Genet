@@ -16,7 +16,7 @@ if args.mode == "train":
     SCP_EXTRA_PATH = None  # No extra SCP in training mode
 elif args.mode == "test":
     CONFIG_FILE = "testconfig.yaml"
-    SCP_EXTRA_PATH = "/home/jane/Genet/fig_reproduce/data/synthetic_test_plus_mahimahi"
+    SCP_EXTRA_PATH = "/home/jane/Genet/fig_reproduce/data/synthetic_test_mahimahi"
 
 with open(CONFIG_FILE, "r") as file:
     config = yaml.safe_load(file)
@@ -25,7 +25,7 @@ servers = config["servers" if args.mode == "train" else "test_servers"]
 username = "janechen"
 
 # Paths for local and remote setup
-LOCAL_CHROMEDRIVER_PATH = "/home/jane/Desktop/Checkpoint-Combined_10RTT_6col_Transformer3_64_5_5_16_4_lr_1e-05-999iter.p"
+LOCAL_CHROMEDRIVER_PATH = "/home/jane/Desktop/Checkpoint-Combined_10RTT_6col_Transformer3_256_4_4_32_4_lr_0.0001_boundaries-quantile50-merged_multi-559iter.p"
 REMOTE_CHROMEDRIVER_PATH = "/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/"
 REDIS_PORT = 2666  # Change if needed
 
@@ -49,6 +49,13 @@ def scp_files(server):
         # Transfer chromedriver file
         sftp.put(LOCAL_CHROMEDRIVER_PATH, os.path.join(REMOTE_CHROMEDRIVER_PATH, os.path.basename(LOCAL_CHROMEDRIVER_PATH)))
         print(f"Chromedriver successfully transferred to {server}:{REMOTE_CHROMEDRIVER_PATH}")
+
+        # Transfer boundary file
+        local_boundary_path = os.path.join(os.path.dirname(LOCAL_CHROMEDRIVER_PATH), "boundaries-quantile50-merged.pkl")
+        boundary_filename = os.path.basename(local_boundary_path)
+        remote_boundary_path = os.path.join(REMOTE_CHROMEDRIVER_PATH, boundary_filename)
+        sftp.put(local_boundary_path, remote_boundary_path)
+        print(f"Boundary file transferred to {server}:{remote_boundary_path}")
 
         # Transfer Mahimahi traces in test mode
         if SCP_EXTRA_PATH:
@@ -154,7 +161,7 @@ def setup_server(server_config, server_index):
         setup_commands.extend(redis_commands)
 
     # Run setup commands
-    run_remote_commands(server, setup_commands)
+    # run_remote_commands(server, setup_commands)
     scp_files(server)
 
     print(f"Setup completed for {server}.")
