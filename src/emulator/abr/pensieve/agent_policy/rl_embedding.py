@@ -77,10 +77,10 @@ def get_last_line(file_path):
 def get_bftrace_out_path(agent_id, collection=False, summary_dir=None, trace_name=None):
     if collection and summary_dir and trace_name:
         # Modify filename correctly
-        if trace_name.endswith('.log'):
-            output_filename = trace_name.replace('.log', '.out')
-        else:
-            output_filename = trace_name + '.out'
+        # if trace_name.endswith('.log'):
+        #     output_filename = trace_name.replace('.log', '.out')
+        # else:
+        output_filename = trace_name + '.out'
 
         # Ensure summary_dir is properly formatted
         summary_dir = os.path.abspath(summary_dir)  # Normalize path
