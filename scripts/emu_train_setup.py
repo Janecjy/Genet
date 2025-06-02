@@ -25,7 +25,7 @@ servers = config["servers" if args.mode == "train" else "test_servers"]
 username = "janechen"
 
 # Paths for local and remote setup
-LOCAL_CHROMEDRIVER_PATH = "/home/jane/Desktop/Checkpoint-Combined_10RTT_6col_Transformer3_256_4_4_32_4_lr_0.0001_boundaries-quantile50-merged_multi-559iter.p"
+LOCAL_CHROMEDRIVER_PATH = "/home/jane/Desktop/unum/Checkpoint-Combined_10RTT_6col_Transformer3_256_4_4_32_4_lr_0.0001_boundaries-quantile50-merged_multi-509iter.p"
 REMOTE_CHROMEDRIVER_PATH = "/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/"
 REDIS_PORT = 2666  # Change if needed
 
@@ -161,7 +161,7 @@ def setup_server(server_config, server_index):
         setup_commands.extend(redis_commands)
 
     # Run setup commands
-    # run_remote_commands(server, setup_commands)
+    run_remote_commands(server, setup_commands)
     scp_files(server)
 
     print(f"Setup completed for {server}.")
