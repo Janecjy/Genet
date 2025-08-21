@@ -139,15 +139,15 @@ class Pensieve():
         self.adaptor_input = adaptor_input
         self.adaptor_hidden_layer = adaptor_hidden_layer
         if self.adaptor_input == "original_action_prob":
-            self.state_dim = 3 + EMBEDDING_SIZE
+            self.state_dim = 3 + FEATURE_DIM
         elif self.adaptor_input == "original_selection":
-            self.state_dim = 3 + EMBEDDING_SIZE
+            self.state_dim = 3 + FEATURE_DIM
         elif self.adaptor_input == "original_bit_rate":
-            self.state_dim = 6 + EMBEDDING_SIZE
+            self.state_dim = 6 + FEATURE_DIM
         elif self.adaptor_input == "hidden_state":
-            self.state_dim = 3 + EMBEDDING_SIZE
+            self.state_dim = 3 + FEATURE_DIM
         else:
-            self.state_dim = [S_INFO+EMBEDDING_SIZE, S_LEN] 
+            self.state_dim = [S_INFO+FEATURE_DIM, S_LEN] 
         # NOTE: this is required for the ``fork`` method to work
         # self.net.actor_network.share_memory()
         # self.net.critic_network.share_memory()
@@ -958,7 +958,8 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         original_action_cumsum = np.cumsum(original_action_prob)
                         original_selection = (original_action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
                         original_selection_one_hot = one_hot_encode(original_selection, 3)
-                        adaptor_input_raw = np.concatenate((original_selection_one_hot, embeddings), axis=0)
+                        adaptor_input_raw = np.concatenate((original_selection_one_hot, tokens), axis=0)
+                        print("Shape of adaptor_input_raw (original_selection):", adaptor_input_raw.shape)
 
                     elif adaptor_input_type == "original_bit_rate":
                         original_action_prob = original_actor.predict(reshaped_state)
