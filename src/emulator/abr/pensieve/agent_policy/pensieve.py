@@ -86,6 +86,50 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
 
     return logger
 
+def get_recent_tokens(tokens, context_window=1, feature_dim=None, logger=None):
+    """
+    Extract the most recent tokens with a specified context window.
+    
+    Args:
+        tokens: Array of token features
+        context_window: Number of recent time steps to include (default: 1)
+        feature_dim: Expected feature dimension (default: FEATURE_DIM)
+        logger: Logger instance for debugging output
+    
+    Returns:
+        recent_tokens: Flattened array of recent token features
+    """
+    if feature_dim is None:
+        feature_dim = FEATURE_DIM
+        
+    expected_size = feature_dim * context_window
+    
+    if tokens.size > 0:
+        if logger:
+            logger.info(f"Extracting recent tokens: {tokens[-context_window:]}")
+            logger.info(f"Expected size: {expected_size}")
+        recent_tokens = tokens[-context_window:].flatten()
+        
+        # Ensure we get exactly the expected number of elements
+        if recent_tokens.size != expected_size:
+            if logger:
+                logger.warning(f"Token size mismatch: got {recent_tokens.size}, expected {expected_size}")
+            if recent_tokens.size > expected_size:
+                recent_tokens = recent_tokens[:expected_size]
+            else:
+                padded = np.zeros(expected_size)
+                padded[:recent_tokens.size] = recent_tokens
+                recent_tokens = padded
+        
+        if logger:
+            logger.info(f"Recent tokens shape: {recent_tokens.shape}")
+    else:
+        recent_tokens = np.zeros(expected_size)
+        if logger:
+            logger.info(f"No tokens available, using zeros with shape: {recent_tokens.shape}")
+    
+    return recent_tokens
+
 def one_hot_encode(index, num_classes):
     """
     Given an integer `index` in [0, num_classes-1],
@@ -958,8 +1002,16 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         original_action_cumsum = np.cumsum(original_action_prob)
                         original_selection = (original_action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
                         original_selection_one_hot = one_hot_encode(original_selection, 3)
-                        adaptor_input_raw = np.concatenate((original_selection_one_hot, tokens), axis=0)
-                        print("Shape of adaptor_input_raw (original_selection):", adaptor_input_raw.shape)
+                        
+                        # Use raw tokens with context window of 1 (most recent token only)
+                        # TODO: Make context_window configurable via parameter
+                        context_window = 1
+                        recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
+                        
+                        adaptor_input_raw = np.concatenate((original_selection_one_hot, recent_tokens), axis=0)
+                        agent_logger.info(f"Shape of adaptor_input_raw (original_selection): {adaptor_input_raw.shape}")
+                        agent_logger.info(f"Context window size: {context_window}")
+                        agent_logger.info(f"Recent tokens shape: {recent_tokens.shape}")
 
                     elif adaptor_input_type == "original_bit_rate":
                         original_action_prob = original_actor.predict(reshaped_state)
@@ -989,7 +1041,10 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         adaptor_input = np.concatenate((original_action_prob_norm, embeddings_norm), axis=0)
 
                     elif adaptor_input_type == "original_selection":
-                        adaptor_input = np.concatenate((original_selection_one_hot, embeddings_norm), axis=0)
+                        # Use the same recent tokens as in adaptor_input_raw
+                        context_window = 1
+                        recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
+                        adaptor_input = np.concatenate((original_selection_one_hot, recent_tokens), axis=0)
 
                     elif adaptor_input_type == "original_bit_rate":
                         adaptor_input = np.concatenate((bit_rate_one_hot, embeddings_norm), axis=0)
