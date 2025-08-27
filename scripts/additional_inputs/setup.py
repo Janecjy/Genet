@@ -127,13 +127,12 @@ def setup_server(server_config, server_index):
         
         # Install Miniconda and create Python 3.6 environment
         "[ -d ~/miniconda ] || (wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && bash ~/miniconda.sh -b -p ~/miniconda)",
+        "~/miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main",
+        "~/miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r",
+        "~/miniconda/bin/conda init bash",
+        # Create conda environment (force creation if it doesn't exist)
+        "~/miniconda/bin/conda create -y -n genet_env python=3.6 || echo 'Environment may already exist'",
         
-        # Ensure Conda is initialized correctly
-        "eval \"$(~/miniconda/bin/conda shell.bash hook)\" && echo $PATH && conda env list | grep genet_env || conda create -y -n genet_env python=3.6",
-        
-        # Activate Conda environment
-        "source ~/miniconda/bin/activate genet_env",
-
         # Clone Genet repo and checkout correct branch
         "[ -d ~/Genet ] || git clone https://github.com/Janecjy/Genet.git ~/Genet",
         f"cd ~/Genet && git fetch --all && git checkout {branch} && git pull",
@@ -145,8 +144,8 @@ def setup_server(server_config, server_index):
         "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
         "sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install ./google-chrome-stable_current_amd64.deb",
 
-        # Install Python dependencies inside Conda
-        "source ~/miniconda/bin/activate genet_env && pip install numpy tensorflow==1.15.0 selenium pyvirtualdisplay numba torch tflearn xvfbwrapper matplotlib redis scipy pandas"
+        # Install Python dependencies using conda directly (more reliable than source + activate)
+        "~/miniconda/envs/genet_env/bin/pip install numpy tensorflow==1.15.0 selenium pyvirtualdisplay numba torch tflearn xvfbwrapper matplotlib redis scipy pandas",
 
         # "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
         # "sudo DEBIAN_FRONTEND=noninteractive apt-get -yf install ./google-chrome-stable_current_amd64.deb"
