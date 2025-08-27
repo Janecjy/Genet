@@ -18,8 +18,8 @@ DEVICE = 'cpu'
 
 
 
-transformer = torch.load("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/Checkpoint-Combined_10RTT_6col_Transformer3_256_4_4_32_4_lr_0.0001_boundaries-quantile50-merged_multi-559iter.p", map_location='cpu')
-transformer.eval()
+# transformer = torch.load("/users/janechen/Genet/src/emulator/abr/pensieve/agent_policy/Checkpoint-Combined_10RTT_6col_Transformer3_256_4_4_32_4_lr_0.0001_boundaries-quantile50-merged_multi-559iter.p", map_location='cpu')
+# transformer.eval()
 
 
 class TCPStatsAggregator:
