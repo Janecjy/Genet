@@ -97,7 +97,7 @@ def train_server(server_config, index):
         f"adaptor_input={adaptor_input}, hidden_layer={hidden_layer}, seed={emulation_seed}"
     )
 
-    if branch == "unum-adaptor":
+    if branch == "raw-add-inputs":
         commands = [
             "tmux kill-server || true",
             "rm -rf /mydata/*",
