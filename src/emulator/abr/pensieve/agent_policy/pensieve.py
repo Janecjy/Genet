@@ -139,6 +139,26 @@ def one_hot_encode(index, num_classes):
     one_hot[index] = 1.0
     return one_hot
 
+def global_min_max_normalize(arr, global_min, global_max):
+    """
+    Normalize a 1D numpy array using global min/max values to [0, 1].
+    This ensures consistent scaling across all inputs.
+    
+    Args:
+        arr: Array to normalize
+        global_min: Global minimum values for each feature
+        global_max: Global maximum values for each feature
+    
+    Returns:
+        Normalized array with consistent scaling
+    """
+    diff = global_max - global_min
+    # Avoid division by zero - if min==max, keep original values
+    mask = np.abs(diff) > 1e-12
+    normalized = np.copy(arr)
+    normalized[mask] = (arr[mask] - global_min[mask]) / diff[mask]
+    return normalized
+
 def min_max_normalize(arr):
     """
     Min-max normalize a 1D numpy array to [0, 1].
@@ -1041,10 +1061,24 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         adaptor_input = np.concatenate((original_action_prob_norm, embeddings_norm), axis=0)
 
                     elif adaptor_input_type == "original_selection":
-                        # Use the same recent tokens as in adaptor_input_raw
+                        # Use the same recent tokens as in adaptor_input_raw, but normalize them using global min/max
                         context_window = 1
                         recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
-                        adaptor_input = np.concatenate((original_selection_one_hot, recent_tokens), axis=0)
+                        
+                        # Use global normalization for consistent scaling
+                        if min_raw_adaptor_input is not None and max_raw_adaptor_input is not None:
+                            # Extract the token portion from global min/max (skip the first 3 elements which are one-hot)
+                            global_token_min = min_raw_adaptor_input[3:]  # Skip one-hot part
+                            global_token_max = max_raw_adaptor_input[3:]  # Skip one-hot part
+                            recent_tokens_norm = global_min_max_normalize(recent_tokens, global_token_min, global_token_max)
+                            agent_logger.info(f"Using global normalization - token min: {global_token_min}, max: {global_token_max}")
+                        else:
+                            # Fallback to local normalization if no global stats yet
+                            recent_tokens_norm = min_max_normalize(recent_tokens)
+                            agent_logger.warning("Using local normalization (no global stats available yet)")
+                        
+                        adaptor_input = np.concatenate((original_selection_one_hot, recent_tokens_norm), axis=0)
+                        agent_logger.info(f"Normalized recent_tokens: min={recent_tokens_norm.min():.4f}, max={recent_tokens_norm.max():.4f}")
 
                     elif adaptor_input_type == "original_bit_rate":
                         adaptor_input = np.concatenate((bit_rate_one_hot, embeddings_norm), axis=0)
