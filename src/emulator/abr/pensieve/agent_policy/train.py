@@ -114,6 +114,12 @@ def parse_args():
         default=0,
         help="Number of hidden layers in adaptor."
     )
+    parser.add_argument(
+        "--context-window",
+        type=int,
+        default=1,
+        help="Context window size for token history (default: 1 for most recent token only)."
+    )
     subparsers = parser.add_subparsers(dest="curriculum", help="CL parsers.")
     udr_parser = subparsers.add_parser("udr", help="udr")
     udr_parser.add_argument(
@@ -222,6 +228,7 @@ def main():
         val_traces=args.train_trace_dir,
         adaptor_input=args.adaptor_input,
         adaptor_hidden_layer=args.adaptor_hidden_layer,
+        context_window=args.context_window,
     )
 
     ###########################################################################

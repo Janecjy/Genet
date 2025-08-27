@@ -192,7 +192,7 @@ class Pensieve():
 
     def __init__(self, num_agents, log_dir, actor=None,
                  critic_path=None, model_save_interval=100, batch_size=100,
-                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces="", original_actor=None, adaptor_input=None, adaptor_hidden_layer=None):
+                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces="", original_actor=None, adaptor_input=None, adaptor_hidden_layer=None, context_window=1):
         # https://github.com/pytorch/pytorch/issues/3966
         # mp.set_start_method("spawn")
         self.num_agents = num_agents
@@ -202,14 +202,15 @@ class Pensieve():
         self.original_actor = original_actor
         self.adaptor_input = adaptor_input
         self.adaptor_hidden_layer = adaptor_hidden_layer
+        self.context_window = context_window
         if self.adaptor_input == "original_action_prob":
-            self.state_dim = 3 + FEATURE_DIM
+            self.state_dim = 3 + FEATURE_DIM * self.context_window
         elif self.adaptor_input == "original_selection":
-            self.state_dim = 3 + FEATURE_DIM
+            self.state_dim = 3 + FEATURE_DIM * self.context_window
         elif self.adaptor_input == "original_bit_rate":
-            self.state_dim = 6 + FEATURE_DIM
+            self.state_dim = 6 + FEATURE_DIM * self.context_window
         elif self.adaptor_input == "hidden_state":
-            self.state_dim = 3 + FEATURE_DIM
+            self.state_dim = 3 + FEATURE_DIM * self.context_window
         else:
             self.state_dim = [S_INFO+FEATURE_DIM, S_LEN] 
         # NOTE: this is required for the ``fork`` method to work
@@ -292,7 +293,8 @@ class Pensieve():
                     original_actor_path,
                     self.adaptor_input,
                     self.adaptor_hidden_layer,
-                    self.state_dim
+                    self.state_dim,
+                    self.context_window
                 )
             ))
             # agents.append(mp.Process(
@@ -872,7 +874,7 @@ def compute_reward(msg, bit_rate, last_quality):
 
 def agent(agent_id, net_params_queue, exp_queue, train_envs,
           summary_dir, batch_size, randomization, randomization_interval,
-          num_agents, original_actor_path, adaptor_input_type, adaptor_hidden_layer, s_dim):
+          num_agents, original_actor_path, adaptor_input_type, adaptor_hidden_layer, s_dim, context_window):
     """
     Each agent process picks an environment (delay, trace) from train_envs,
     starts a Mahimahi shell, runs the virtual_browser, collects data, etc.
@@ -1023,9 +1025,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         original_selection = (original_action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
                         original_selection_one_hot = one_hot_encode(original_selection, 3)
                         
-                        # Use raw tokens with context window of 1 (most recent token only)
-                        # TODO: Make context_window configurable via parameter
-                        context_window = 1
+                        # Use raw tokens with configurable context window
                         recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
                         
                         adaptor_input_raw = np.concatenate((original_selection_one_hot, recent_tokens), axis=0)
@@ -1062,7 +1062,6 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
                     elif adaptor_input_type == "original_selection":
                         # Use the same recent tokens as in adaptor_input_raw, but normalize them using global min/max
-                        context_window = 1
                         recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
                         
                         # Use global normalization for consistent scaling

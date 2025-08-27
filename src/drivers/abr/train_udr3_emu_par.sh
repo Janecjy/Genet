@@ -27,6 +27,7 @@ MODE="simulation"
 emulation_seed=10
 adaptor_input=""
 adaptor_hidden_layer=""
+context_window=1
 
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -47,9 +48,13 @@ case $1 in
         adaptor_hidden_layer="$2"
         shift
         ;;
+    --context-window)
+        context_window="$2"
+        shift
+        ;;
     *) # unknown option
         echo "Unknown option: $1"
-        echo "Usage: $0 [--mode simulation|emulation] [--emulation-seed SEED] [--adaptor-input INPUT] [--adaptor-hidden-layer LAYER]"
+        echo "Usage: $0 [--mode simulation|emulation] [--emulation-seed SEED] [--adaptor-input INPUT] [--adaptor-hidden-layer LAYER] [--context-window WINDOW]"
         exit 1
         ;;
 esac
@@ -85,11 +90,12 @@ elif [ "$MODE" = "emulation" ]; then
         --jump-action \
         --adaptor-input ${adaptor_input} \
         --adaptor-hidden-layer ${adaptor_hidden_layer} \
+        --context-window ${context_window} \
         udr \
         --config-file ${config_file} \
         --val-trace-dir ${val_trace_dir}
 else
     echo "Unknown mode: $MODE"
-    echo "Usage: $0 [--mode simulation|emulation] [--emulation-seed SEED] [--adaptor-input INPUT] [--adaptor-hidden-layer LAYER]"
+    echo "Usage: $0 [--mode simulation|emulation] [--emulation-seed SEED] [--adaptor-input INPUT] [--adaptor-hidden-layer LAYER] [--context-window WINDOW]"
     exit 1
 fi

@@ -32,25 +32,23 @@ adaptor_hidden_layers = [128, 256]
 # 4) Multiple seeds, but we prioritize unique (input, hidden) before changing seeds
 seeds = [10, 20, 30, 40, 50]
 
-# First build the (input, hidden) pairs (no seed)
+# 5) Context window sizes to test
+context_windows = [1, 3, 5]  # Test different context window sizes
+
+# First build the (input, hidden, context_window) combinations
 base_combos = [
-    (input_type, hidden_size)
+    (input_type, hidden_size, context_window)
     for input_type in adaptor_inputs
     for hidden_size in adaptor_hidden_layers
+    for context_window in context_windows
 ]
-# base_combos = [
-#   ("original_selection", 128),
-#   ("original_selection", 256),
-#   ("hidden_state", 128),
-#   ("hidden_state", 256),
-# ]
 
-# Then create a final list of (input_type, hidden_size, seed) in the order:
+# Then create a final list of (input_type, hidden_size, context_window, seed) in the order:
 # seed=10 for all combos, seed=20 for all combos, ...
 adaptor_configs = []
 for seed in seeds:
-    for (input_type, hidden_layer) in base_combos:
-        adaptor_configs.append((input_type, hidden_layer, seed))
+    for (input_type, hidden_layer, context_window) in base_combos:
+        adaptor_configs.append((input_type, hidden_layer, context_window, seed))
 
 def run_remote_commands(server, commands):
     """SSH into the server and execute the given commands sequentially."""
@@ -89,12 +87,12 @@ def train_server(server_config, index):
     # Pick a configuration from adaptor_configs
     # If we have more combos than servers, only the first N combos are used.
     config_index = index % len(adaptor_configs)
-    adaptor_input, hidden_layer, emulation_seed = adaptor_configs[config_index]
+    adaptor_input, hidden_layer, context_window, emulation_seed = adaptor_configs[config_index]
 
-    log_filename = f"/mydata/logs/emu_{emulation_seed}_{adaptor_input}_{hidden_layer}.out"
+    log_filename = f"/mydata/logs/emu_{emulation_seed}_{adaptor_input}_{hidden_layer}_cw{context_window}.out"
     print(
         f"Starting training on {server} (branch: {branch}), "
-        f"adaptor_input={adaptor_input}, hidden_layer={hidden_layer}, seed={emulation_seed}"
+        f"adaptor_input={adaptor_input}, hidden_layer={hidden_layer}, context_window={context_window}, seed={emulation_seed}"
     )
 
     if branch == "raw-add-inputs":
@@ -110,7 +108,7 @@ def train_server(server_config, index):
             f"tmux send-keys -t main:training_window 'cd ~/Genet' C-m",
             f"tmux send-keys -t main:training_window "
             f"'src/drivers/abr/train_udr3_emu_par.sh --mode emulation --emulation-seed {emulation_seed} "
-            f"--adaptor-input {adaptor_input} --adaptor-hidden-layer {hidden_layer} 2>&1 | tee {log_filename}' C-m",
+            f"--adaptor-input {adaptor_input} --adaptor-hidden-layer {hidden_layer} --context-window {context_window} 2>&1 | tee {log_filename}' C-m",
             "tmux ls"
         ]
         if run:
