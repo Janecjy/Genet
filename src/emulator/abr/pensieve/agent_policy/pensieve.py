@@ -192,7 +192,7 @@ class Pensieve():
 
     def __init__(self, num_agents, log_dir, actor=None,
                  critic_path=None, model_save_interval=100, batch_size=100,
-                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces="", original_actor=None, adaptor_input=None, adaptor_hidden_layer=None, context_window=1):
+                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces="", original_actor=None, adaptor_input=None, adaptor_hidden_layer=None, context_window=1, seed=None):
         # https://github.com/pytorch/pytorch/issues/3966
         # mp.set_start_method("spawn")
         self.num_agents = num_agents
@@ -203,6 +203,7 @@ class Pensieve():
         self.adaptor_input = adaptor_input
         self.adaptor_hidden_layer = adaptor_hidden_layer
         self.context_window = context_window
+        self.seed = seed
         if self.adaptor_input == "original_action_prob":
             self.state_dim = 3 + FEATURE_DIM * self.context_window
         elif self.adaptor_input == "original_selection":
@@ -516,9 +517,21 @@ class Pensieve():
                     # if val_mean_reward > max_avg_reward:
                     # max_avg_reward = val_mean_reward
                     # Save the neural net parameters to disk.
+                    # Create descriptive model name with configuration parameters
+                    model_name_parts = [f"nn_model_ep_{epoch}"]
+                    if self.seed is not None:
+                        model_name_parts.append(f"seed_{self.seed}")
+                    if self.adaptor_input is not None:
+                        model_name_parts.append(f"adaptor_{self.adaptor_input}")
+                    if self.adaptor_hidden_layer is not None:
+                        model_name_parts.append(f"hidden_{self.adaptor_hidden_layer}")
+                    if self.context_window is not None:
+                        model_name_parts.append(f"cw_{self.context_window}")
+                    
+                    model_filename = "_".join(model_name_parts) + ".ckpt"
                     save_path = saver.save(
                         sess,
-                        os.path.join(save_dir, "model_saved", f"nn_model_ep_{epoch}.ckpt"))
+                        os.path.join(save_dir, "model_saved", model_filename))
                     self.train_logger.info("Model saved in file: " + save_path)
 
                 end_t = time.time()
@@ -698,8 +711,28 @@ class Pensieve():
 
     def save_models(self, model_save_path):
         """Save models to a directory."""
-        self.net.save_actor_model(os.path.join(model_save_path, "actor.pth"))
-        self.net.save_critic_model(os.path.join(model_save_path, "critic.pth"))
+        # Create descriptive model names with configuration parameters
+        actor_name_parts = ["actor"]
+        critic_name_parts = ["critic"]
+        
+        if self.seed is not None:
+            actor_name_parts.append(f"seed_{self.seed}")
+            critic_name_parts.append(f"seed_{self.seed}")
+        if self.adaptor_input is not None:
+            actor_name_parts.append(f"adaptor_{self.adaptor_input}")
+            critic_name_parts.append(f"adaptor_{self.adaptor_input}")
+        if self.adaptor_hidden_layer is not None:
+            actor_name_parts.append(f"hidden_{self.adaptor_hidden_layer}")
+            critic_name_parts.append(f"hidden_{self.adaptor_hidden_layer}")
+        if self.context_window is not None:
+            actor_name_parts.append(f"cw_{self.context_window}")
+            critic_name_parts.append(f"cw_{self.context_window}")
+        
+        actor_filename = "_".join(actor_name_parts) + ".pth"
+        critic_filename = "_".join(critic_name_parts) + ".pth"
+        
+        self.net.save_actor_model(os.path.join(model_save_path, actor_filename))
+        self.net.save_critic_model(os.path.join(model_save_path, critic_filename))
 
     def load_models(self, actor_model_path, critic_model_path):
         """Load models from given paths."""
@@ -800,10 +833,29 @@ class Pensieve():
                 # Save the neural net parameters to disk.
                 print("Train epoch: {}/{}, time use: {}s".format(
                     epoch + 1, iters, time.time() - t_start))
-                self.net.save_critic_model(os.path.join(
-                    self.log_dir, "critic_ep_{}.pth".format(self.epoch + 1)))
-                self.net.save_actor_model(os.path.join(
-                    self.log_dir, "actor_ep_{}.pth".format(self.epoch + 1)))
+                
+                # Create descriptive model names with configuration parameters
+                critic_name_parts = [f"critic_ep_{self.epoch + 1}"]
+                actor_name_parts = [f"actor_ep_{self.epoch + 1}"]
+                
+                if self.seed is not None:
+                    critic_name_parts.append(f"seed_{self.seed}")
+                    actor_name_parts.append(f"seed_{self.seed}")
+                if self.adaptor_input is not None:
+                    critic_name_parts.append(f"adaptor_{self.adaptor_input}")
+                    actor_name_parts.append(f"adaptor_{self.adaptor_input}")
+                if self.adaptor_hidden_layer is not None:
+                    critic_name_parts.append(f"hidden_{self.adaptor_hidden_layer}")
+                    actor_name_parts.append(f"hidden_{self.adaptor_hidden_layer}")
+                if self.context_window is not None:
+                    critic_name_parts.append(f"cw_{self.context_window}")
+                    actor_name_parts.append(f"cw_{self.context_window}")
+                
+                critic_filename = "_".join(critic_name_parts) + ".pth"
+                actor_filename = "_".join(actor_name_parts) + ".pth"
+                
+                self.net.save_critic_model(os.path.join(self.log_dir, critic_filename))
+                self.net.save_actor_model(os.path.join(self.log_dir, actor_filename))
 
                 # tmp_save_dir = os.path.join(self.log_dir, 'test_results')
                 if val_envs is not None:

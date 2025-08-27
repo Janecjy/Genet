@@ -229,6 +229,7 @@ def main():
         adaptor_input=args.adaptor_input,
         adaptor_hidden_layer=args.adaptor_hidden_layer,
         context_window=args.context_window,
+        seed=args.seed,
     )
 
     ###########################################################################
