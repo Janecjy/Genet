@@ -48,8 +48,6 @@ def start_remote_test(server, model_path, trace_dir, summary_dir, port_id, agent
         # Commands to set up and run test
         commands = [
             "tmux kill-server || true",
-            "rm -rf /mydata/results/* /mydata/logs/*",
-            "mkdir -p /mydata/results /mydata/logs",
             f"cd {genet_path} && git reset --hard && git fetch && git checkout {branch} && git pull",
             f"grep -rl --include='*.py' '10.10.1.2' {genet_path}/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.2/{redis_ip}/g' || true",
             "tmux new-session -d -s test_main 'bash'",
@@ -127,15 +125,8 @@ def main():
     servers = config["servers"]
     username = "janechen"
 
-    # Filter servers that should run
-    active_servers = [s for s in servers if s.get("run", False)]
-    
-    if not active_servers:
-        print("❌ No servers have 'run: true' in config file!")
-        print("Available servers:")
-        for i, server in enumerate(servers, 1):
-            print(f"  {i}. {server['hostname']} (run: {server.get('run', False)})")
-        return 1
+    # Use all servers
+    active_servers = servers
 
     # Limit number of servers if specified
     if args.max_servers:
