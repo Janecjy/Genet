@@ -4,9 +4,10 @@ import paramiko
 import yaml
 import concurrent.futures
 import re
+import sys
 
 # Load configuration from YAML file
-CONFIG_FILE = "config.yaml"
+CONFIG_FILE = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
 USERNAME = "janechen"
 
 # Read the server list from config.yaml
@@ -87,6 +88,8 @@ if __name__ == "__main__":
     # Run checks in parallel
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(servers)) as executor:
         results = list(executor.map(check_logs_and_update, servers))
+
+    print(results)
 
     # Update the config.yaml file
     with open(CONFIG_FILE, "w") as file:
