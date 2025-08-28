@@ -5,9 +5,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import yaml
+import sys
 
 # Load server addresses from config.yaml
-CONFIG_FILE = "config.yaml"
+CONFIG_FILE = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
 
 with open(CONFIG_FILE, "r") as file:
     config = yaml.safe_load(file)
