@@ -10,7 +10,8 @@ PORT_ID=$4
 AGENT_ID=$5
 ADAPTOR_INPUT=$6
 ADAPTOR_HIDDEN_SIZE=$7
-EXTRA_ARG=$8
+CONTEXT_WINDOW=${8:-1}  # New parameter with default value 1
+EXTRA_ARG=$9
 ORIGINAL_MODEL_PATH=/users/janechen/Genet/fig_reproduce/data/all_models/udr_3/nn_model_ep_58000.ckpt
 CONFIG_FILE=/users/janechen/Genet/config/abr/udr3_emu_par.json
 
@@ -31,5 +32,5 @@ for trace_file in ${trace_files} ; do
     bash -c "python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port ${PORT_ID} --abr RL \
     --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir /mydata/results/${SUMMARY_DIR_NAME}/UDR-3_${AGENT_ID}_${buf_th}_${delay} \
     --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322 --num-epochs=1 --run_time=0 \
-    --original-model-path ${ORIGINAL_MODEL_PATH} --adaptor-input ${ADAPTOR_INPUT} --adaptor-hidden-size ${ADAPTOR_HIDDEN_SIZE} ${EXTRA_ARG}"
+    --original-model-path ${ORIGINAL_MODEL_PATH} --adaptor-input ${ADAPTOR_INPUT} --adaptor-hidden-size ${ADAPTOR_HIDDEN_SIZE} --context-window ${CONTEXT_WINDOW} ${EXTRA_ARG}"
 done

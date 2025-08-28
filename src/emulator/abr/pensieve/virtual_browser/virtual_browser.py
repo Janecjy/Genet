@@ -58,6 +58,8 @@ def parse_args():
                         help='Type of adaptor input.')
     parser.add_argument('--adaptor-hidden-size', type=int, default=128,
                         help='Hidden size of adaptor.')
+    parser.add_argument('--context-window', type=int, default=1,
+                        help='Context window size for adaptor.')
 
     # data io related
     parser.add_argument('--summary-dir', type=str, required=True,
@@ -213,6 +215,7 @@ def main():
             args.original_model_path,
             args.adaptor_input,
             args.adaptor_hidden_size,
+            args.context_window,
             embedding,
             tokens,
         )

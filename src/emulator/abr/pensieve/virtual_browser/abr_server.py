@@ -314,7 +314,7 @@ def make_request_handler(server_states):
     return Request_Handler
 
 def run_abr_server(abr, trace_file, summary_dir, actor_path,
-                   video_size_file_dir, ip='localhost', port=8333, original_model_path=None, adaptor_input=None, hidden_size=128, embedding=None, tokens=None):
+                   video_size_file_dir, ip='localhost', port=8333, original_model_path=None, adaptor_input=None, hidden_size=128, context_window=1, embedding=None, tokens=None):
     print(f"Summary Directory {summary_dir}")
     os.makedirs(summary_dir, exist_ok=True)
     log_file_path = os.path.join(
@@ -383,7 +383,7 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
                 print(f"Restoring OriginalActorNetwork model from {original_model_path}")
                 original_actor_saver.restore(sess, original_model_path)
             # assert actor_path is not None, "actor-path is needed for RL abr."
-            abr = Pensieve(16, summary_dir, actor=actor, original_actor=original_actor, model_save_interval=100, adaptor_input=adaptor_input, adaptor_hidden_layer=hidden_size)
+            abr = Pensieve(16, summary_dir, actor=actor, original_actor=original_actor, model_save_interval=100, adaptor_input=adaptor_input, adaptor_hidden_layer=hidden_size, context_window=context_window)
         elif abr == 'BufferBased':
             abr = BufferBased()
         elif abr == 'RLTrain':
