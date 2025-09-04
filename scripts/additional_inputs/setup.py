@@ -16,7 +16,7 @@ if args.mode == "train":
     SCP_EXTRA_PATH = None  # No extra SCP in training mode
 elif args.mode == "test":
     CONFIG_FILE = "testconfig.yaml"
-    SCP_EXTRA_PATH = "/home/jane/Genet/fig_reproduce/data/synthetic_test_mahimahi"
+    SCP_EXTRA_PATH = "/home/jane/Genet/abr_trace/testing_trace_mahimahi_sample"
 
 with open(CONFIG_FILE, "r") as file:
     config = yaml.safe_load(file)
@@ -40,27 +40,27 @@ def scp_files(server):
         client.connect(server, username=username)
         sftp = client.open_sftp()
 
-        # Ensure remote directories exist
-        try:
-            sftp.stat(REMOTE_CHROMEDRIVER_PATH)
-        except FileNotFoundError:
-            sftp.mkdir(REMOTE_CHROMEDRIVER_PATH)
+        # # Ensure remote directories exist
+        # try:
+        #     sftp.stat(REMOTE_CHROMEDRIVER_PATH)
+        # except FileNotFoundError:
+        #     sftp.mkdir(REMOTE_CHROMEDRIVER_PATH)
 
-        # Transfer chromedriver file
-        sftp.put(LOCAL_CHROMEDRIVER_PATH, os.path.join(REMOTE_CHROMEDRIVER_PATH, os.path.basename(LOCAL_CHROMEDRIVER_PATH)))
-        print(f"Chromedriver successfully transferred to {server}:{REMOTE_CHROMEDRIVER_PATH}")
+        # # Transfer chromedriver file
+        # sftp.put(LOCAL_CHROMEDRIVER_PATH, os.path.join(REMOTE_CHROMEDRIVER_PATH, os.path.basename(LOCAL_CHROMEDRIVER_PATH)))
+        # print(f"Chromedriver successfully transferred to {server}:{REMOTE_CHROMEDRIVER_PATH}")
 
-        # Transfer boundary file
-        local_boundary_path = os.path.join(os.path.dirname(LOCAL_CHROMEDRIVER_PATH), "boundaries-quantile50-merged.pkl")
-        boundary_filename = os.path.basename(local_boundary_path)
-        remote_boundary_path = os.path.join(REMOTE_CHROMEDRIVER_PATH, boundary_filename)
-        sftp.put(local_boundary_path, remote_boundary_path)
-        print(f"Boundary file transferred to {server}:{remote_boundary_path}")
+        # # Transfer boundary file
+        # local_boundary_path = os.path.join(os.path.dirname(LOCAL_CHROMEDRIVER_PATH), "boundaries-quantile50-merged.pkl")
+        # boundary_filename = os.path.basename(local_boundary_path)
+        # remote_boundary_path = os.path.join(REMOTE_CHROMEDRIVER_PATH, boundary_filename)
+        # sftp.put(local_boundary_path, remote_boundary_path)
+        # print(f"Boundary file transferred to {server}:{remote_boundary_path}")
 
         # Transfer Mahimahi traces in test mode
         if SCP_EXTRA_PATH:
             print(f"Transferring Mahimahi traces to {server}...")
-            remote_data_path = "/users/janechen/Genet/fig_reproduce/data/"
+            remote_data_path = "/mydata/"
             os.system(f"scp -r {SCP_EXTRA_PATH} {username}@{server}:{remote_data_path}")
             print(f"Mahimahi traces successfully transferred to {server}")
 
@@ -161,7 +161,8 @@ def setup_server(server_config, server_index):
 
     # Run setup commands
     run_remote_commands(server, setup_commands)
-    # scp_files(server)
+    if args.mode == "test":
+        scp_files(server)
 
     print(f"Setup completed for {server}.")
 
