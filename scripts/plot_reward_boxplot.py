@@ -135,12 +135,12 @@ for trace_type in ['fcc', 'norway']:
 print(all_improvements)
 
 # ----------------- Plot boxplot ----------------------
-plt.figure(figsize=(4, 5))
+plt.figure(figsize=(3, 4))
 box = plt.boxplot(
     [imp * 100 for imp in all_improvements],  # convert to %
     labels=labels,
     patch_artist=True,
-    widths=0.6, 
+    widths=0.6,  # Make boxes wider (default is 0.5)
     boxprops=dict(linewidth=1.5),
     medianprops=dict(linewidth=2),
     whiskerprops=dict(linewidth=1.5),
@@ -148,14 +148,20 @@ box = plt.boxplot(
     flierprops=dict(marker='o', markersize=4, linestyle='none')
 )
 
-plt.ylabel("Reward Improvement (%)", fontsize=22)
-plt.xticks(fontsize=22)
+# Print the mean value for each box
+for i, improvements in enumerate(all_improvements):
+    mean = np.mean(improvements) * 100
+    print(f"Mean improvement for {labels[i]}: {mean:.2f}%")
+
+plt.ylabel("Reward Improvement (%)", fontsize=22, y=0.4)  # Increase labelpad to move label away from axis
+plt.xticks(fontsize=22, rotation=10)
 plt.yticks(fontsize=22)
 plt.grid(axis='y', linestyle='--', alpha=0.5)
-plt.tight_layout()
 
 plot_path = os.path.join(RESULTS_DIR, "reward_improvement_fcc_norway_sample_boxplot.png")
-plt.savefig(plot_path)
+plot_pdf_path = os.path.join(RESULTS_DIR, "reward_improvement_fcc_norway_sample_boxplot.pdf")
+plt.savefig(plot_path, bbox_inches='tight', pad_inches=0.1)
+plt.savefig(plot_pdf_path, bbox_inches='tight', pad_inches=0.1)
 # plt.show()
 
 print(f"Saved boxplot at: {plot_path}")

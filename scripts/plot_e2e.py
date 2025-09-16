@@ -1,7 +1,12 @@
+"""
+Read the log files and plot throughput vs delay.
+"""
+
 import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams['text.usetex'] = False
 
 # ------------------ Directories ---------------------
 RESULTS_DIR = "/home/jane/Genet/scripts/04_20_model_set"
@@ -10,6 +15,7 @@ os.makedirs(SCATTER_PLOT_DIR, exist_ok=True)
 
 PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/testing_trace_mahimahi")
 UNUM_DIR = os.path.join(RESULTS_DIR, "04_20_model_set/04_20_model_set")
+SAMPLE_DIR = "/home/jane/Genet/abr_trace/testing_trace_mahimahi_sample"
 
 adaptor_inputs = ["original_selection", "hidden_state"]
 adaptor_hidden_layers = [128, 256]
@@ -33,30 +39,60 @@ def compute_metrics(log_path):
         print(f"Error reading {log_path}: {e}")
     return None, None, None
 
-# ---------------- Plot Both FCC and Norway ----------------
+# ---------------- Apply Orca figure specifications ----------------
+plt.rcParams["font.size"] = 20
+plt.figure(figsize=(6, 4))
+
+# Orca color scheme and styling
+colors = ["#82B366", "#D79B00", "#9673A6", "#6C8EBF", "#D6B656", "#B85450", "#BF5700", "#FF6347"]
+markers = ["o", "P", "^", "s", "p", "d", "v", "X"]
+styles = ["-", "--", "-.", ":", (0, (3, 1, 1, 1)), (0, (2, 1)), (0, (5, 1)), (0, (3, 5, 1, 5))]
+
+# ---------------- Get sampled traces from plot_reward_boxplot.py ----------------
+def get_sampled_traces():
+    """Get the same traces used in plot_reward_boxplot.py"""
+    sample_traces = {}
+    
+    for trace_type in ['fcc', 'norway']:
+        # Get traces from sample directory (same as plot_reward_boxplot.py)
+        type_traces = [
+            f for f in os.listdir(SAMPLE_DIR) 
+            if f.startswith(f"{trace_type}-test")
+        ]
+        sample_traces[trace_type] = type_traces
+    
+    return sample_traces
+
+# ---------------- Plot Both FCC and Norway (using sampled traces) ----------------
+sampled_traces = get_sampled_traces()
+
 trace_sets = {
-    "FCC": {"prefix": "log_RL_fcc-test_", "marker": "o"},
-    "Norway": {"prefix": "log_RL_norway-test_", "marker": "s"},
+    "FCC": {"traces": sampled_traces.get('fcc', []), "prefix": "log_RL_fcc-test_", "marker": "o"},
+    "Norway": {"traces": sampled_traces.get('norway', []), "prefix": "log_RL_norway-test_", "marker": "s"},
 }
 
-# Fixed color map
+# Fixed color map using Orca colors
 model_color_map = {
-    "Pensieve": "blue",
-    "Adaptor": "orange"
+    "Pensieve": colors[0],  # "#82B366"
+    "Adaptor": colors[1]    # "#D79B00"
 }
-
-plt.figure()
 
 for trace_label, trace_info in trace_sets.items():
+    sample_traces_for_type = trace_info["traces"]
     trace_prefix = trace_info["prefix"]
     trace_marker = trace_info["marker"]
+    
+    print(f"[{trace_label}] Processing {len(sample_traces_for_type)} sampled traces:")
+    for i, trace in enumerate(sample_traces_for_type, 1):
+        print(f"  {i}. {trace}")
 
-    # Collect Pensieve logs
-    pensieve_logs = {
-        f: os.path.join(PENSIEVE_DIR, f)
-        for f in os.listdir(PENSIEVE_DIR)
-        if f.startswith(trace_prefix)
-    }
+    # Collect Pensieve logs (only for sampled traces)
+    pensieve_logs = {}
+    for trace_file in sample_traces_for_type:
+        pensieve_trace_name = f"log_RL_{trace_file}"
+        pensieve_path = os.path.join(PENSIEVE_DIR, pensieve_trace_name)
+        if os.path.exists(pensieve_path):
+            pensieve_logs[pensieve_trace_name] = pensieve_path
 
     # Collect Unum logs
     unum_models = {}
@@ -68,20 +104,22 @@ for trace_label, trace_info in trace_sets.items():
         if not os.path.exists(trace_subdir):
             continue
 
+        # Check if model has any of our sampled traces
         model_traces = [
             f for f in os.listdir(trace_subdir)
-            if f.startswith(trace_prefix)
+            if f in pensieve_logs
         ]
         if model_traces:
             unum_models[model] = model_path
 
-    # Find common traces
+    # Find common traces (intersection of Pensieve and all Unum models, limited to sampled traces)
     common_traces = set(pensieve_logs.keys())
-    for model_path in unum_models.values():
+    for model, model_path in unum_models.items():
         trace_dir = os.path.join(model_path, "UDR-3_0_60_40")
-        common_traces &= {
-            f for f in os.listdir(trace_dir) if f in pensieve_logs
-        }
+        available_traces = set(os.listdir(trace_dir)) & set(pensieve_logs.keys())
+        common_traces &= available_traces
+
+    print(f"[{trace_label}] Found {len(common_traces)} common traces between Pensieve and Unum models")
 
     # Collect metrics
     model_metrics = {
@@ -112,10 +150,10 @@ for trace_label, trace_info in trace_sets.items():
         mean_bitrate = np.mean([v[2] for v in values])
 
         if "Pensieve" in model_name:
-            label = f"Pensieve ({trace_label})"
+            label = f"Pensieve-{trace_label}"
             color = model_color_map["Pensieve"]
         elif "Adaptor" in model_name:
-            label = f"Pensieve-Unum-Adaptor ({trace_label})"
+            label = f"Adaptor-{trace_label}"
             color = model_color_map["Adaptor"]
         else:
             continue
@@ -123,17 +161,20 @@ for trace_label, trace_info in trace_sets.items():
         plt.scatter(mean_rebuffer, mean_bitrate, label=label, color=color,
                     marker=trace_marker, s=120, edgecolors='black', alpha=0.9)
 
-# ----------------- Final Plotting ---------------------
-plt.xlabel("Mean 90p Rebuffering Time (ms)", fontsize=18)
-plt.ylabel("Mean Bitrate (Kbps)", fontsize=18)
-plt.legend(fontsize=16)
-plt.grid(True)
-plt.xticks(fontsize=16)
-plt.yticks(fontsize=16)
-plt.tight_layout()
+# ----------------- Apply Orca styling to final plot ---------------------
+plt.xlabel("Mean 90p Rebuffering Time (ms)", fontsize=24)
+plt.ylabel("Mean Bitrate (Kbps)", fontsize=24)
+plt.grid()
 
-plot_path = os.path.join(SCATTER_PLOT_DIR, "mean_scatter_fcc_norway_markers.png")
-plt.savefig(plot_path)
-plt.close()
+# Use Orca legend styling - positioned inside plot area
+plt.legend(loc="center", ncol=1, columnspacing=0.3, 
+           handlelength=1.0, handletextpad=0.3, framealpha=0.9)
+plt.subplots_adjust(top=0.95, bottom=0.21, left=0.18, right=.98)
 
-print(f"Saved mean scatter plot: {plot_path}")
+plot_path = os.path.join(SCATTER_PLOT_DIR, "thr_delay_output.png")
+plot_pdf_path = os.path.join(SCATTER_PLOT_DIR, "thr_delay_output.pdf")
+plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+plt.savefig(plot_pdf_path, dpi=300, bbox_inches='tight')
+
+print(f"Saved plot: {plot_path}")
+print(f"Saved PDF: {plot_pdf_path}")
