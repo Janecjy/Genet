@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 RESULTS_DIR = "/home/jane/Genet/scripts/04_20_model_set"
 PENSIEVE_DIR = os.path.join(RESULTS_DIR, "pensieve-original/testing_trace_mahimahi")
 UNUM_DIR = os.path.join(RESULTS_DIR, "04_20_model_set/04_20_model_set")
+SAMPLE_DIR = "/home/jane/Genet/abr_trace/testing_trace_mahimahi_sample"
 
 # ---------------- Configurations ---------------------
 adaptor_inputs = ["original_selection", "hidden_state"]
@@ -47,12 +48,25 @@ labels = []
 for trace_type in ['fcc', 'norway']:
     prefix = get_trace_filter_prefix(trace_type)
 
-    # Collect Pensieve traces
-    pensieve_logs = {
-        file: os.path.join(PENSIEVE_DIR, file)
-        for file in os.listdir(PENSIEVE_DIR)
-        if file.startswith(prefix)
-    }
+    # Get traces from sample directory
+    sample_traces = [
+        f for f in os.listdir(SAMPLE_DIR) 
+        if f.startswith(f"{trace_type}-test")
+    ]
+    
+    if not sample_traces:
+        print(f"No sample traces for {trace_type}")
+        continue
+    
+    print(f"[{trace_type.upper()}] Found {len(sample_traces)} sample traces")
+
+    # Collect Pensieve traces (only for sample traces)
+    pensieve_logs = {}
+    for trace_file in sample_traces:
+        pensieve_trace_name = f"log_RL_{trace_file}"
+        pensieve_path = os.path.join(PENSIEVE_DIR, pensieve_trace_name)
+        if os.path.exists(pensieve_path):
+            pensieve_logs[pensieve_trace_name] = pensieve_path
 
     # Collect Unum models
     unum_models = {
@@ -67,7 +81,7 @@ for trace_type in ['fcc', 'norway']:
         model_name = get_model_config(server_id)
         model_config_map[model] = model_name
 
-    # Identify common traces available across all servers
+    # Identify common traces available across all servers (only from sample traces)
     common_traces = set(pensieve_logs.keys())
     for model, model_path in unum_models.items():
         for trace_file in list(common_traces):
@@ -83,6 +97,7 @@ for trace_type in ['fcc', 'norway']:
     improvements = []
     pensieve_filtered_rewards = []
     unum_filtered_rewards = []
+    filtered_traces = []
 
     for trace_file in common_traces:
         pensieve_reward = compute_mean_reward(pensieve_logs[trace_file])
@@ -96,23 +111,26 @@ for trace_type in ['fcc', 'norway']:
                 break
         if pensieve_reward is not None and unum_reward is not None and pensieve_reward != 0:
             improvement = (unum_reward - pensieve_reward) / abs(pensieve_reward)
-            if improvement > -0.3:  # keep only improvements better than -30%
-                improvements.append(improvement)
-                pensieve_filtered_rewards.append(pensieve_reward)
-                unum_filtered_rewards.append(unum_reward)
+            improvements.append(improvement)
+            pensieve_filtered_rewards.append(pensieve_reward)
+            unum_filtered_rewards.append(unum_reward)
+            filtered_traces.append(trace_file)
 
     if improvements:
-        print(f"[{trace_type.upper()}] Found {len(improvements)} valid traces")
+        print(f"[{trace_type.upper()}] Found {len(improvements)} valid sample traces")
+        print(f"[{trace_type.upper()}] Sample traces processed:")
+        for i, trace in enumerate(filtered_traces):
+            print(f"  {i+1}. {trace}")
         all_improvements.append(np.array(improvements))
         print(f"[{trace_type.upper()}] Mean Pensieve Reward improvement: {np.mean(improvements):.4f}")
         labels.append(trace_type.upper())
 
-    # Print mean rewards after filtering
+    # Print mean rewards for sample traces
     if pensieve_filtered_rewards and unum_filtered_rewards:
         mean_pensieve = np.mean(pensieve_filtered_rewards)
         mean_unum = np.mean(unum_filtered_rewards)
-        print(f"[{trace_type.upper()}] Mean Pensieve Reward (after filtering): {mean_pensieve:.4f}")
-        print(f"[{trace_type.upper()}] Mean UNUM-Adaptor Reward (after filtering): {mean_unum:.4f}")
+        print(f"[{trace_type.upper()}] Mean Pensieve Reward (sample traces): {mean_pensieve:.4f}")
+        print(f"[{trace_type.upper()}] Mean UNUM-Adaptor Reward (sample traces): {mean_unum:.4f}")
 
 print(all_improvements)
 
@@ -136,8 +154,8 @@ plt.yticks(fontsize=22)
 plt.grid(axis='y', linestyle='--', alpha=0.5)
 plt.tight_layout()
 
-plot_path = os.path.join(RESULTS_DIR, "reward_improvement_fcc_norway_boxplot.png")
+plot_path = os.path.join(RESULTS_DIR, "reward_improvement_fcc_norway_sample_boxplot.png")
 plt.savefig(plot_path)
-plt.show()
+# plt.show()
 
 print(f"Saved boxplot at: {plot_path}")
