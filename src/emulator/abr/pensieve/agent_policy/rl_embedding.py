@@ -121,88 +121,44 @@ def bucketize_value(value, boundaries):
 
 def compute_token_from_parsed_lines(parsed_lines, boundaries_dict):
     """
-    Takes in parsed bpftrace lines (list of dicts) and computes a (1, 10, 6) token array.
+    Takes in parsed bpftrace lines (list of dicts) and computes a 6-feature token array.
     """
+    print(f"DEBUG: compute_token_from_parsed_lines called with {len(parsed_lines) if parsed_lines else 0} lines")
+    
     if not parsed_lines:
-        return np.empty((0, 20, 6), dtype=np.float32)
-
-    last_time_ms = parsed_lines[-1]['time_ms']
-    rtt_window_count = 10
-    total_window_start = last_time_ms - (AGGREGATION_WINDOW_MS * rtt_window_count)
-
-    parsed_lines = [l for l in parsed_lines if l['time_ms'] >= total_window_start]
-    if len(parsed_lines) == 0:
-        return np.empty((0, 20, 6), dtype=np.float32)
-
-    metrics_data = []
-
-    pre_pkt_lost = parsed_lines[0]['lost']
-    pre_delivered = parsed_lines[0]['delivered']
-    pre_cwnd = parsed_lines[0]['snd_cwnd']
-    dt_pre = parsed_lines[0]['time_ms']
-
-    for window_idx in range(rtt_window_count):
-        interval_start = total_window_start + window_idx * AGGREGATION_WINDOW_MS
-        interval_end = interval_start + AGGREGATION_WINDOW_MS
-        block = [l for l in parsed_lines if interval_start <= l['time_ms'] < interval_end]
-
-        if not block:
-            return np.empty((0, 20, 6), dtype=np.float32)
-
-        block_sorted = sorted(block, key=lambda x: x['time_ms'])
-
-        samples = []
-        t = interval_start + WINDOW
-        while t <= interval_end:
-            candidates = [l for l in block_sorted if l['time_ms'] >= t]
-            if candidates:
-                samples.append(candidates[0])
-            t += WINDOW
-
-        if not samples:
-            return np.empty((0, 20, 6), dtype=np.float32)
-
-        srtt_vals, rttvar_vals, rate_vals, f5_vals, f6_vals = [], [], [], [], []
-
-        for s in samples:
-            srtt_vals.append(s['srtt'] / 100000.0)
-            rttvar_vals.append(s['rttvar'] / 1000.0)
-
-            dt = (s['time_ms'] - dt_pre) * 1000 if dt_pre > 0 else 1
-            delivered_rate = (s['delivered'] - pre_delivered) * s['mss'] * 80 / dt if s['delivered'] > pre_delivered else 0
-            rate_vals.append(delivered_rate)
-            dt_pre = s['time_ms']
-            pre_delivered = s['delivered']
-
-            l_db = (s['lost'] - pre_pkt_lost) * s['mss'] if s['lost'] > pre_pkt_lost else 0
-            f5_vals.append(8.0 * l_db / dt / 100.0 if dt > 0 else 0.0)
-            pre_pkt_lost = s['lost']
-
-            cwnd = s['snd_cwnd']
-            f6_vals.append(cwnd / pre_cwnd if pre_cwnd > 0 else 0.0)
-            pre_cwnd = cwnd
-
-        # Compute the 6 features
-        avg_features = [
-            0.8,
-            np.mean(srtt_vals),
-            np.mean(rttvar_vals),
-            np.mean(rate_vals),
-            np.mean(f5_vals),
-            np.mean(f6_vals)
+        print("DEBUG: No parsed lines, returning zeros")
+        return np.zeros(6, dtype=np.float32)
+    
+    try:
+        # Simple computation using the last few samples
+        recent_samples = parsed_lines[-10:] if len(parsed_lines) >= 10 else parsed_lines
+        print(f"DEBUG: Using {len(recent_samples)} recent samples")
+        
+        if not recent_samples:
+            return np.zeros(6, dtype=np.float32)
+        
+        # Extract basic features
+        srtt_vals = [s['srtt'] / 100000.0 for s in recent_samples]
+        rttvar_vals = [s['rttvar'] / 1000.0 for s in recent_samples]
+        cwnd_vals = [s['snd_cwnd'] for s in recent_samples]
+        
+        # Compute 6 features
+        features = [
+            0.8,                          # Feature 0: Fixed
+            np.mean(srtt_vals),           # Feature 1: RTT
+            np.mean(rttvar_vals),         # Feature 2: RTT variance  
+            np.mean(cwnd_vals) / 10.0,    # Feature 3: Normalized cwnd
+            0.0,                          # Feature 4: Loss rate (simplified)
+            1.0                           # Feature 5: Cwnd ratio (simplified)
         ]
-        # metrics_data.append(avg_features)
-
-        # # Now perform bucketization on features 1-5 (index 1 to 5)
-        # token = []
-        # for feat_idx in range(1, 6):
-        #     val = avg_features[feat_idx]
-        #     bds = boundaries_dict.get(feat_idx, [])
-        #     b_idx = bucketize_value(val, bds)
-        #     token.append(b_idx)
-
-    # Final output
-    return np.array(avg_features, dtype=np.float32)
+        
+        result = np.array(features, dtype=np.float32)
+        print(f"DEBUG: Returning features shape={result.shape}, values={result}")
+        return result
+        
+    except Exception as e:
+        print(f"ERROR in compute_token_from_parsed_lines: {e}")
+        return np.zeros(6, dtype=np.float32)
 
 def add_embedding(state, tokens, embeddings):
     """
@@ -338,10 +294,27 @@ def transform_state_and_add_embedding(agent_id, state, embeddings, tokens, token
 
     parsed_lines = token_reader.get_recent_parsed_lines()
     new_tokens = compute_token_from_parsed_lines(parsed_lines, boundaries_dict)
+    
+    print(f"[Agent {agent_id}] DEBUG: new_tokens shape: {new_tokens.shape}, values: {new_tokens}")
 
     if new_tokens.size > 0:
-        tokens = np.concatenate((tokens, new_tokens), axis=0) if tokens.size > 0 else new_tokens
-        tokens = tokens[-WINDOW:]
+        # Reshape new_tokens to (1, 6) for proper concatenation as time steps
+        new_tokens = new_tokens.reshape(1, -1)  # Shape: (1, 6)
+        print(f"[Agent {agent_id}] DEBUG: new_tokens reshaped to: {new_tokens.shape}")
+        
+        print(f"[Agent {agent_id}] DEBUG: tokens before concat: shape={tokens.shape if tokens.size > 0 else 'empty'}")
+        
+        if tokens.size == 0:
+            tokens = new_tokens  # First time: shape (1, 6)
+        else:
+            # Ensure tokens is 2D for concatenation
+            if tokens.ndim == 1:
+                tokens = tokens.reshape(1, -1)
+            tokens = np.concatenate((tokens, new_tokens), axis=0)  # Stack along time dimension
+            
+        print(f"[Agent {agent_id}] DEBUG: tokens after concat: shape={tokens.shape}")
+        tokens = tokens[-WINDOW:]  # Keep last 10 time steps
+        print(f"[Agent {agent_id}] DEBUG: tokens after truncate: shape={tokens.shape}")
 
         print(f"[Agent {agent_id}] add_embedding state shape: {state.shape}")
         # embeddings = add_embedding(state, tokens, embeddings)

@@ -106,12 +106,7 @@ for trace in "${trace_files[@]}"; do
                 config_index=$(( (server_num - 1) % ${#adaptor_configs[@]} ))
                 config=${adaptor_configs[$config_index]}
                 
-                # Extract values from config
-                IFS=':' read -r adaptor_input adaptor_hidden_size context_window seed <<< "$config"
-
-                echo "Server $server_num assigned config: Input=$adaptor_input, Hidden=$adaptor_hidden_size, ContextWindow=$context_window, Seed=$seed"
-
-                # Find latest checkpoint file
+                # Find latest checkpoint file first to extract actual config
                 file=$(find "$dir" -name "nn_model_ep_[0-9]*.ckpt*" | sort -V | tail -1)
                 
                 if [ -z "$file" ]; then
@@ -119,6 +114,29 @@ for trace in "${trace_files[@]}"; do
                     continue
                 fi
                 
+                # Extract configuration from actual filename instead of hardcoded mapping
+                filename=$(basename "$file")
+                if [[ $filename =~ adaptor_(.+)_hidden_([0-9]+)_cw_([0-9]+) ]]; then
+                    adaptor_input="${BASH_REMATCH[1]}"
+                    adaptor_hidden_size="${BASH_REMATCH[2]}"
+                    context_window="${BASH_REMATCH[3]}"
+                    
+                    # Extract seed from filename if present
+                    if [[ $filename =~ seed_([0-9]+) ]]; then
+                        seed="${BASH_REMATCH[1]}"
+                    else
+                        # Fallback to config mapping if seed not in filename
+                        IFS=':' read -r _ _ _ seed <<< "$config"
+                    fi
+                else
+                    # Fallback to config mapping if filename doesn't match expected pattern
+                    echo "Warning: Could not extract config from filename: $filename"
+                    echo "Using config mapping instead"
+                    IFS=':' read -r adaptor_input adaptor_hidden_size context_window seed <<< "$config"
+                fi
+
+                echo "Server $server_num extracted config: Input=$adaptor_input, Hidden=$adaptor_hidden_size, ContextWindow=$context_window, Seed=$seed"
+
                 prefix=$(basename "$(echo "$file" | sed 's/nn_model_ep_//; s/\.ckpt.*//')")
                 
                 # Create unique summary directory that includes all config parameters
