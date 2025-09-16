@@ -230,7 +230,7 @@ def make_request_handler(server_states):
                         self.logger.info(f"Embedding transformed: {self.embedding}") 
                     
                     bit_rate = self.abr.select_action(
-                       state, last_bit_rate=self.server_states['last_bit_rate'], use_embedding=use_embedding, embeddings=self.embedding)
+                       state, last_bit_rate=self.server_states['last_bit_rate'], use_embedding=use_embedding, embeddings=self.embedding, tokens=self.tokens)
                     
                 elif isinstance(self.abr, RobustMPC):
                     last_index = int(post_data['lastRequest'])
@@ -343,25 +343,25 @@ def run_abr_server(abr, trace_file, summary_dir, actor_path,
                                     hidden_dim=hidden_size)
             elif adaptor_input == "original_action_prob":
                 actor = ActorNetwork(sess,
-                                    state_dim=3+rl_embedding.EMBEDDING_SIZE,
+                                    state_dim=3+rl_embedding.FEATURE_DIM*context_window,
                                     action_dim=3,
                                     bitrate_dim=len(VIDEO_BIT_RATE),
                                     hidden_dim=hidden_size)
             elif adaptor_input == "original_selection":
                 actor = ActorNetwork(sess,
-                                    state_dim=3+rl_embedding.EMBEDDING_SIZE,
+                                    state_dim=3+rl_embedding.FEATURE_DIM*context_window,
                                     action_dim=3,
                                     bitrate_dim=len(VIDEO_BIT_RATE),
                                     hidden_dim=hidden_size)
             elif adaptor_input == "original_bit_rate":
                 actor = ActorNetwork(sess,
-                                    state_dim=6+rl_embedding.EMBEDDING_SIZE,
+                                    state_dim=6+rl_embedding.FEATURE_DIM*context_window,
                                     action_dim=3,
                                     bitrate_dim=len(VIDEO_BIT_RATE),
                                     hidden_dim=hidden_size)
             elif adaptor_input == "hidden_state":
                 actor = ActorNetwork(sess,
-                                    state_dim=rl_embedding.HIDDEN_SIZE+rl_embedding.EMBEDDING_SIZE,
+                                    state_dim=3+rl_embedding.FEATURE_DIM*context_window,
                                     action_dim=3,
                                     bitrate_dim=len(VIDEO_BIT_RATE),
                                     hidden_dim=hidden_size)

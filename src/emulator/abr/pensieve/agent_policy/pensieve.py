@@ -559,7 +559,12 @@ class Pensieve():
         # print(bit_rate)
         return bit_rate
 
-    def select_action(self, state, last_bit_rate, use_embedding=False, embeddings=None):
+    def select_action(self, state, last_bit_rate, use_embedding=False, embeddings=None, tokens=None):
+        # Initialize tokens with zeros if not provided
+        if tokens is None:
+            tokens = np.zeros((FEATURE_DIM,))
+            self.test_logger.info(f"Tokens not provided, initialized with zeros: shape {tokens.shape}")
+            
         if use_embedding:
             self.test_logger.info("use embedding")
             if self.adaptor_input is not None:
@@ -589,22 +594,23 @@ class Pensieve():
                 embeddings_flat = embeddings.flatten()  
                 embeddings_norm = min_max_normalize(embeddings_flat)
 
-                # Branch 2: HIDDEN
-                # (same logic will also apply to hidden_state, see below)
+                # Branch 2: HIDDEN / hidden_state  
                 if self.adaptor_input == "hidden_state":
                     self.test_logger.info("hidden adaptor")
                     
-                    # Get the hidden state from the original actor
-                    original_hidden = self.original_actor.get_hidden(
+                    # For hidden_state, the state_dim calculation shows it should be 3 + FEATURE_DIM * context_window
+                    # This suggests we should use a 3-element prefix + recent tokens, not the hidden state
+                    # Get the action probabilities as the 3-element prefix
+                    original_action_prob = self.original_actor.predict(
                         np.reshape(state, (1, S_INFO, S_LEN))
-                    )  # shape e.g. (1, 128)
+                    )
+                    original_action_prob_flat = original_action_prob.flatten()  # shape: (3,)
                     
-                    # Flatten + min–max normalize
-                    original_hidden_flat = original_hidden.flatten()
-                    original_hidden_flat_norm = min_max_normalize(original_hidden_flat)
+                    # Use get_recent_tokens instead of embeddings
+                    recent_tokens = get_recent_tokens(tokens, self.context_window, FEATURE_DIM, self.test_logger)
                     
-                    # Concat hidden + embeddings
-                    adaptor_input = np.concatenate((original_hidden_flat_norm, embeddings_norm))
+                    # Concat action_prob + recent tokens
+                    adaptor_input = np.concatenate((original_action_prob_flat, recent_tokens))
                     self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
 
                 # Branch 3: original_action_prob (min–max normalize raw probabilities)
@@ -617,12 +623,17 @@ class Pensieve():
                     # Min–max normalize the probabilities
                     original_action_prob_norm = min_max_normalize(original_action_prob_flat)
                     
-                    # Concat with normalized embeddings
-                    adaptor_input = np.concatenate((original_action_prob_norm, embeddings_norm), axis=0)
+                    # Use get_recent_tokens instead of embeddings_norm
+                    recent_tokens = get_recent_tokens(tokens, self.context_window, FEATURE_DIM, self.test_logger)
+                    
+                    # Concat with recent tokens
+                    adaptor_input = np.concatenate((original_action_prob_norm, recent_tokens), axis=0)
                     self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
 
                 # Branch 4: original_selection (one‐hot encode the selection)
                 elif self.adaptor_input == "original_selection":
+
+                    self.test_logger.info("original_selection adaptor")
                     original_action_prob = self.original_actor.predict(
                         np.reshape(state, (1, S_INFO, S_LEN))
                     )
@@ -634,8 +645,11 @@ class Pensieve():
                     # If your real actions are -1,0,1 → map them to 0,1,2
                     original_selection_one_hot = one_hot_encode(original_selection, 3)
                     
-                    # Concat with normalized embeddings
-                    adaptor_input = np.concatenate((original_selection_one_hot, embeddings_norm), axis=0)
+                    # Use get_recent_tokens instead of embeddings_norm
+                    recent_tokens = get_recent_tokens(tokens, self.context_window, FEATURE_DIM, self.test_logger)
+                    
+                    # Concat with recent tokens
+                    adaptor_input = np.concatenate((original_selection_one_hot, recent_tokens), axis=0)
                     self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
 
                 # Branch 5: original_bit_rate (one‐hot encode the resulting bit rate)
@@ -653,8 +667,11 @@ class Pensieve():
                     # One-hot encode bit_rate across 6 possible levels
                     bit_rate_one_hot = one_hot_encode(bit_rate, 6)
                     
-                    # Concat with normalized embeddings
-                    adaptor_input = np.concatenate((bit_rate_one_hot, embeddings_norm), axis=0)
+                    # Use get_recent_tokens instead of embeddings_norm
+                    recent_tokens = get_recent_tokens(tokens, self.context_window, FEATURE_DIM, self.test_logger)
+                    
+                    # Concat with recent tokens
+                    adaptor_input = np.concatenate((bit_rate_one_hot, recent_tokens), axis=0)
                     self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
                 # If no known adaptor, just pass the state + embedding directly to net
                 else:
@@ -1110,7 +1127,10 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
                     if adaptor_input_type == "original_action_prob":
                         original_action_prob_norm = min_max_normalize(original_action_prob)
-                        adaptor_input = np.concatenate((original_action_prob_norm, embeddings_norm), axis=0)
+                        # Use get_recent_tokens instead of embeddings_norm
+                        recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
+                        recent_tokens_norm = min_max_normalize(recent_tokens)
+                        adaptor_input = np.concatenate((original_action_prob_norm, recent_tokens_norm), axis=0)
 
                     elif adaptor_input_type == "original_selection":
                         # Use the same recent tokens as in adaptor_input_raw, but normalize them using global min/max
@@ -1132,11 +1152,17 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         agent_logger.info(f"Normalized recent_tokens: min={recent_tokens_norm.min():.4f}, max={recent_tokens_norm.max():.4f}")
 
                     elif adaptor_input_type == "original_bit_rate":
-                        adaptor_input = np.concatenate((bit_rate_one_hot, embeddings_norm), axis=0)
+                        # Use get_recent_tokens instead of embeddings_norm
+                        recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
+                        recent_tokens_norm = min_max_normalize(recent_tokens)
+                        adaptor_input = np.concatenate((bit_rate_one_hot, recent_tokens_norm), axis=0)
 
                     elif adaptor_input_type == "hidden_state":
-                        original_hidden_flat_norm = min_max_normalize(original_hidden)
-                        adaptor_input = np.concatenate((original_hidden_flat_norm, embeddings_norm))
+                        # For hidden_state, use same logic as inference: action_prob + recent_tokens
+                        original_action_prob_flat = original_action_prob.flatten()  # shape: (3,)
+                        recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
+                        recent_tokens_norm = min_max_normalize(recent_tokens)
+                        adaptor_input = np.concatenate((original_action_prob_flat, recent_tokens_norm))
 
 
                     agent_logger.info(f"[Agent {agent_id}] Adaptor input shape: {adaptor_input.shape}")
