@@ -68,6 +68,9 @@ if [ ! -d "$TRACE_DIR" ]; then
     exit 1
 fi
 
+# Create logs directory if it doesn't exist
+mkdir -p /mydata/logs
+
 # Get all trace files and shuffle them deterministically
 trace_files=($(ls ${TRACE_DIR}/* | shuf --random-source=<(yes $SEED)))
 
