@@ -1,3 +1,5 @@
+# SSH username for connecting to servers (set to your SSH user)
+username: janechen
 servers:
 - branch: unum-adaptor
   hostname: clnode036.clemson.cloudlab.us

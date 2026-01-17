@@ -1,15 +1,27 @@
+# SSH username for connecting to test servers (set to your SSH user)
+username: janechen
 test_servers:
-  - hostname: clnode040.clemson.cloudlab.us
+  - hostname: clnode250.clemson.cloudlab.us
     branch: sim-reproduce
     redis_ip: 10.10.1.1
     redis: false
 
-  - hostname: clnode009.clemson.cloudlab.us
-    branch: unum-adaptor
+  - hostname: clnode249.clemson.cloudlab.us
+    branch: main
     redis_ip: 10.10.1.2
     redis: true
 
-  - hostname: clstore04.clemson.cloudlab.us
-    branch: unum-adaptor
+  - hostname: clnode222.clemson.cloudlab.us
+    branch: main
     redis_ip: 10.10.1.3
+    redis: true
+
+  - hostname: clnode238.clemson.cloudlab.us
+    branch: main
+    redis_ip: 10.10.1.4
+    redis: true
+
+  - hostname: clnode221.clemson.cloudlab.us
+    branch: main
+    redis_ip: 10.10.1.5
     redis: true
