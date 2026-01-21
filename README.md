@@ -49,3 +49,19 @@ python emu_setup.py --mode train
 ```bash
 python emu_setup.py --mode test
 ```
+
+## Test
+
+Run tests on configured test nodes:
+
+### Single-server mode (recommended for quick testing)
+Tests one model on the first available unum-adaptor node:
+```bash
+python emu_test.py {model_name (e.g. unum_adaptor)} --single-server
+```
+
+### Multi-server mode (distributed testing)
+Distributes multi-model testing across multiple servers:
+```bash
+python emu_test.py {model_name (e.g. unum_adaptor)}
+```
