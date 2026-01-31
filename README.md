@@ -8,7 +8,7 @@ Our integration adds support for training and evaluating the Unum adaptor, while
 
 ## Setup
 
-We provide a setup script that installs all dependencies required for Unum adaptor training and testing on fresh Ubuntu 24.04 CloudLab nodes.
+We provide a setup script that installs all dependencies required for Unum adaptor training and testing on fresh Ubuntu 24.04 CloudLab nodes, assuming there is temporary filesystem mount point `/mydata`.
 
 - **UNUM adaptor (training and testing)**: `main`
 - **Original Pensieve baseline branch**: `sim-reproduce`
