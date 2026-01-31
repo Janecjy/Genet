@@ -96,7 +96,7 @@ def setup_server(server_config, server_index):
 
         # Clone Genet repo and checkout correct branch
         "[ -d ~/Genet ] || git clone https://github.com/Janecjy/Genet.git ~/Genet",
-        f"cd ~/Genet && git fetch --all && git checkout {branch} && git pull",
+        f"cd ~/Genet && git fetch --all && git checkout main && git pull",
 
         # Install emulation dependencies
         "sudo DEBIAN_FRONTEND=noninteractive apt-get -y install xvfb python3-pip python3-tk unzip",
