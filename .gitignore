@@ -124,10 +124,7 @@ genet/bin/*
 lib*
 pyvenv.cfg
 fig_reproduce/data/*
-fig_reproduce/model/*
 *.png
-fig_reproduce/model/*
-fig_reproduce/data/*
 *.ipynb
 data/*
 abr_trace/testing_trace_mahimahi/*
