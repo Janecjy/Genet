@@ -54,7 +54,7 @@ python emu_setup.py --mode test
 
 Run tests on configured test nodes:
 
-### Single-server mode (recommended for quick testing)
+### Single-server mode (recommended for artifact evaluation)
 Tests one model on the first available unum-adaptor node:
 ```bash
 python emu_test.py {model_name (e.g. unum_adaptor)} --single-server
@@ -65,3 +65,15 @@ Distributes multi-model testing across multiple servers:
 ```bash
 python emu_test.py {model_name (e.g. unum_adaptor)}
 ```
+
+### Artifact evaluation
+
+```bash
+python emu_setup.py --mode test
+```
+
+```bash
+python emu_test.py {model_name (e.g. unum_adaptor)} --single-server
+```
+
+The original pensieve results are written in `results/pensieve/UDR-3_60_40`.

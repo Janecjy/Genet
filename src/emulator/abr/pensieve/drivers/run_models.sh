@@ -51,54 +51,100 @@ fi
 # Get all trace files and shuffle them deterministically
 trace_files=($(ls ${TRACE_DIR}/* | shuf --random-source=<(yes $SEED)))
 
-for trace in "${trace_files[@]}"; do
-    echo "Processing trace: $trace"
-    temp_trace_dir="/mydata/temp_trace_dir/"
+# Check if MODEL_PARENT_PATH is a direct model directory (single-server mode) or contains server_* subdirectories
+model_basename=$(basename "$MODEL_PARENT_PATH")
+if [ -f "$MODEL_PARENT_PATH"/*.ckpt* ] 2>/dev/null || [[ ! $model_basename =~ server_ ]] && [ ! -d "$MODEL_PARENT_PATH/server_1" ]; then
+    # Single-server mode: MODEL_PARENT_PATH points directly to a model directory
+    echo "Single-server mode detected: Using model from $MODEL_PARENT_PATH"
     
-    # Create temp directory and copy trace file
-    rm -rf "$temp_trace_dir"
-    mkdir -p "$temp_trace_dir"
-    cp "$trace" "$temp_trace_dir"
-
-    # Process all models in the selected server ID range
-    for dir in "$MODEL_PARENT_PATH"/*; do
-        if [ -d "$dir" ]; then
-            subdir_name=$(basename "$dir")
-
-            # Extract the numeric server ID
-            if [[ $subdir_name =~ server_([0-9]+) ]]; then
-                server_num=${BASH_REMATCH[1]}
-                
-                # Check if the server falls within the requested range
-                if (( server_num < START_SERVER_ID || server_num > END_SERVER_ID )); then
-                    continue
-                fi
-
-                # Assign config using modulo to wrap around if needed
-                config_index=$(( (server_num - 1) % ${#adaptor_configs[@]} ))
-                config=${adaptor_configs[$config_index]}
-                
-                # Extract values from config
-                IFS=':' read -r adaptor_input adaptor_hidden_size seed <<< "$config"
-
-                echo "Server $server_num assigned config: Input=$adaptor_input, Hidden=$adaptor_hidden_size, Seed=$seed"
-
-                # Find latest checkpoint file
-                file=$(find "$dir" -name "nn_model_ep_[0-9]*.ckpt*" | sort -V | tail -1)
-                prefix=$(basename "$(echo "$file" | sed 's/nn_model_ep_//; s/\.ckpt.*//')")
-                
-                # Run model with assigned config
-                sub_summary_dir=${SUMMARY_DIR_NAME}/${subdir_name}_nn_model_ep_${prefix}
-                mkdir -p "/mydata/results/$sub_summary_dir"
-                ${GENET_BASE_PATH}/src/emulator/abr/pensieve/drivers/run_mahimahi_emulation_UDR_3.sh \
-                    ${GENET_BASE_PATH} \
-                    ${MODEL_PARENT_PATH}/$subdir_name/nn_model_ep_${prefix}.ckpt \
-                    ${temp_trace_dir} ${sub_summary_dir} ${PORT_ID} ${AGENT_ID} \
-                    ${adaptor_input} ${adaptor_hidden_size} ${EXTRA_ARG}
-            fi
+    # Use default config for single model
+    adaptor_input="original_selection"
+    adaptor_hidden_size=128
+    
+    for trace in "${trace_files[@]}"; do
+        echo "Processing trace: $trace"
+        temp_trace_dir="/mydata/temp_trace_dir/"
+        
+        # Create temp directory and copy trace file
+        rm -rf "$temp_trace_dir"
+        mkdir -p "$temp_trace_dir"
+        cp "$trace" "$temp_trace_dir"
+        
+        # Find latest checkpoint file
+        file=$(find "$MODEL_PARENT_PATH" -maxdepth 1 -name "nn_model_ep_[0-9]*.ckpt*" | sort -V | tail -1)
+        
+        if [ -z "$file" ]; then
+            echo "No checkpoint file found in $MODEL_PARENT_PATH"
+            continue
         fi
+        
+        prefix=$(basename "$(echo "$file" | sed 's/nn_model_ep_//; s/\.ckpt.*//')")
+        
+        # Run model with default config
+        sub_summary_dir=${SUMMARY_DIR_NAME}/nn_model_ep_${prefix}
+        mkdir -p "/mydata/results/$sub_summary_dir"
+        ${GENET_BASE_PATH}/src/emulator/abr/pensieve/drivers/run_mahimahi_emulation_UDR_3.sh \
+            ${GENET_BASE_PATH} \
+            ${MODEL_PARENT_PATH}/nn_model_ep_${prefix}.ckpt \
+            ${temp_trace_dir} ${sub_summary_dir} ${PORT_ID} ${AGENT_ID} \
+            ${adaptor_input} ${adaptor_hidden_size} 1 ${EXTRA_ARG}
+        
+        # Cleanup temp trace directory before moving to next trace
+        rm -rf "$temp_trace_dir"
     done
+else
+    # Multi-server mode: MODEL_PARENT_PATH contains server_* subdirectories
+    echo "Multi-server mode detected: Processing models in $MODEL_PARENT_PATH"
+    
+    for trace in "${trace_files[@]}"; do
+        echo "Processing trace: $trace"
+        temp_trace_dir="/mydata/temp_trace_dir/"
+        
+        # Create temp directory and copy trace file
+        rm -rf "$temp_trace_dir"
+        mkdir -p "$temp_trace_dir"
+        cp "$trace" "$temp_trace_dir"
 
-    # Cleanup temp trace directory before moving to next trace
-    rm -rf "$temp_trace_dir"
-done
+        # Process all models in the selected server ID range
+        for dir in "$MODEL_PARENT_PATH"/*; do
+            if [ -d "$dir" ]; then
+                subdir_name=$(basename "$dir")
+
+                # Extract the numeric server ID
+                if [[ $subdir_name =~ server_([0-9]+) ]]; then
+                    server_num=${BASH_REMATCH[1]}
+                    
+                    # Check if the server falls within the requested range
+                    if (( server_num < START_SERVER_ID || server_num > END_SERVER_ID )); then
+                        continue
+                    fi
+
+                    # Assign config using modulo to wrap around if needed
+                    config_index=$(( (server_num - 1) % ${#adaptor_configs[@]} ))
+                    config=${adaptor_configs[$config_index]}
+                    
+                    # Extract values from config
+                    IFS=':' read -r adaptor_input adaptor_hidden_size seed <<< "$config"
+
+                    echo "Server $server_num assigned config: Input=$adaptor_input, Hidden=$adaptor_hidden_size, Seed=$seed"
+
+                    # Find latest checkpoint file
+                    file=$(find "$dir" -name "nn_model_ep_[0-9]*.ckpt*" | sort -V | tail -1)
+                    prefix=$(basename "$(echo "$file" | sed 's/nn_model_ep_//; s/\.ckpt.*//')")
+                    
+                    # Run model with assigned config
+                    sub_summary_dir=${SUMMARY_DIR_NAME}/${subdir_name}_nn_model_ep_${prefix}
+                    mkdir -p "/mydata/results/$sub_summary_dir"
+                    ${GENET_BASE_PATH}/src/emulator/abr/pensieve/drivers/run_mahimahi_emulation_UDR_3.sh \
+                        ${GENET_BASE_PATH} \
+                        ${MODEL_PARENT_PATH}/$subdir_name/nn_model_ep_${prefix}.ckpt \
+                        ${temp_trace_dir} ${sub_summary_dir} ${PORT_ID} ${AGENT_ID} \
+                        ${adaptor_input} ${adaptor_hidden_size} 1 ${EXTRA_ARG}
+                fi
+            fi
+        done
+
+        # Cleanup temp trace directory before moving to next trace
+        rm -rf "$temp_trace_dir"
+    done
+fi
