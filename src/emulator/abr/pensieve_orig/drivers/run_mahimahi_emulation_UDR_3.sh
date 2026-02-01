@@ -2,7 +2,7 @@
 set -e
 
 GENET_BASE_PATH=$1
-VIDEO_SIZE_DIR=pensieve/data/video_sizes
+VIDEO_SIZE_DIR=${GENET_BASE_PATH}/src/emulator/abr/pensieve/data/video_sizes
 # ACTOR_PATH=${ROOT}/results/7_dims_rand_large_range_correct_rebuf_penalty/even_udr_1_rand_interval/actor_ep_50000.pth
 ACTOR_PATH=${GENET_BASE_PATH}/fig_reproduce/data/all_models/udr_3/nn_model_ep_58000.ckpt
 UP_LINK_SPEED_FILE=${GENET_BASE_PATH}/src/emulator/abr/pensieve_orig/data/12mbps
