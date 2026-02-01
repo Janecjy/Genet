@@ -33,5 +33,5 @@ for trace_file in ${trace_files} ; do
     bash -c "cd ${GENET_BASE_PATH}/src/emulator/abr && python -m pensieve.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port ${PORT_ID} --abr RL \
     --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir /mydata/results/${SUMMARY_DIR_NAME}/UDR-3_${AGENT_ID}_${buf_th}_${delay} \
     --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322 --num-epochs=1 --run_time=0 \
-    --original-model-path ${ORIGINAL_MODEL_PATH} --adaptor-input ${ADAPTOR_INPUT} --adaptor-hidden-size ${ADAPTOR_HIDDEN_SIZE} --context-window ${CONTEXT_WINDOW} ${EXTRA_ARG}"
+    --original-model-path ${ORIGINAL_MODEL_PATH} --adaptor-input ${ADAPTOR_INPUT} --adaptor-hidden-size ${ADAPTOR_HIDDEN_SIZE} ${EXTRA_ARG}"
 done
