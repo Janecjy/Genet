@@ -70,22 +70,28 @@ if [ -f "$MODEL_PARENT_PATH"/*.ckpt* ] 2>/dev/null || [[ ! $model_basename =~ se
         mkdir -p "$temp_trace_dir"
         cp "$trace" "$temp_trace_dir"
         
-        # Find latest checkpoint file
+        # Find latest checkpoint file - check for both patterns
         file=$(find "$MODEL_PARENT_PATH" -maxdepth 1 -name "nn_model_ep_[0-9]*.ckpt*" | sort -V | tail -1)
+        
+        # If no nn_model_ep files, look for unum_adaptor.ckpt or model_basename.ckpt
+        if [ -z "$file" ]; then
+            file=$(find "$MODEL_PARENT_PATH" -maxdepth 1 -name "${model_basename}.ckpt*" | sort -V | tail -1)
+        fi
         
         if [ -z "$file" ]; then
             echo "No checkpoint file found in $MODEL_PARENT_PATH"
             continue
         fi
         
-        prefix=$(basename "$(echo "$file" | sed 's/nn_model_ep_//; s/\.ckpt.*//')")
+        # Extract the base filename without extension
+        ckpt_basename=$(basename "$file" | sed 's/\.ckpt.*//')
         
         # Run model with default config
-        sub_summary_dir=${SUMMARY_DIR_NAME}/nn_model_ep_${prefix}
+        sub_summary_dir=${SUMMARY_DIR_NAME}/${ckpt_basename}
         mkdir -p "/mydata/results/$sub_summary_dir"
         ${GENET_BASE_PATH}/src/emulator/abr/pensieve/drivers/run_mahimahi_emulation_UDR_3.sh \
             ${GENET_BASE_PATH} \
-            ${MODEL_PARENT_PATH}/nn_model_ep_${prefix}.ckpt \
+            ${file} \
             ${temp_trace_dir} ${sub_summary_dir} ${PORT_ID} ${AGENT_ID} \
             ${adaptor_input} ${adaptor_hidden_size} 1 ${EXTRA_ARG}
         
