@@ -42,6 +42,9 @@ done
 # Set the random seed for consistent trace selection
 RANDOM=$SEED
 
+# Remove trailing slash from MODEL_PARENT_PATH if present
+MODEL_PARENT_PATH=${MODEL_PARENT_PATH%/}
+
 # Check if the model directory exists
 if [ ! -d "$MODEL_PARENT_PATH" ]; then
     echo "Error: Directory does not exist"
