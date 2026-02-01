@@ -27,8 +27,7 @@ args = parser.parse_args()
 username = config.get("username")
 GENET_BASE_PATH = f"/users/{username}/Genet"
 TEST_SCRIPT_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve/drivers/run_models.sh"
-SIM_SCRIPT_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve/drivers/run_mahimahi_emulation_UDR_3.sh"
-VIDEO_SERVER_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve/video_server/video_server.py"
+SIM_SCRIPT_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve-orig/drivers/run_mahimahi_emulation_UDR_3.sh"
 
 # Default argument values
 MODEL_PATH = f"{GENET_BASE_PATH}/fig_reproduce/model/{args.model_dir_name}/"
@@ -84,44 +83,52 @@ def start_remote_test(server, start_id=None, end_id=None):
         test_window = "test_script"
         video_server_window = "video_server"
 
+        # Determine video server path and pensieve directory based on branch
+        if branch == "sim-reproduce":
+            video_server_dir = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve-orig/video_server"
+            pensieve_dir = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve-orig"
+        else:
+            video_server_dir = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve/video_server"
+            pensieve_dir = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve"
+
         # Commands to run before starting tmux
         commands = [
             "tmux kill-server || true",
             # "rm -rf /mydata/logs/*",
             "mkdir -p /mydata/logs",
-            f"cd {GENET_BASE_PATH} && git reset --hard && git fetch && git checkout {branch} && git pull",
-            f"grep -rl --include='*.py' '10.10.1.2' {GENET_BASE_PATH}/src/emulator/abr/pensieve/ | xargs sed -i 's/10.10.1.2/{redis_ip}/g' || true",
+            f"cd {GENET_BASE_PATH} && git reset --hard && git fetch && git checkout main && git pull",
+            f"grep -rl --include='*.py' '10.10.1.2' {pensieve_dir}/ | xargs sed -i 's/10.10.1.2/{redis_ip}/g' || true",
             f"tmux new-session -d -s {tmux_session_name} 'bash'",
 
             # Start Video Server in a separate tmux window
             f"tmux new-window -t {tmux_session_name} -n {video_server_window}",
             f"tmux send-keys -t {tmux_session_name}:{video_server_window} 'source ~/miniconda/bin/activate genet_env' C-m",
-            f"tmux send-keys -t {tmux_session_name}:{video_server_window} 'cd {GENET_BASE_PATH}/src/emulator/abr/pensieve/video_server' C-m",
+            f"tmux send-keys -t {tmux_session_name}:{video_server_window} 'cd {video_server_dir}' C-m",
             f"tmux send-keys -t {tmux_session_name}:{video_server_window} 'python video_server.py --port={PORT_ID}' C-m",
 
             # Start Test Script in a separate tmux window
             f"tmux new-window -t {tmux_session_name} -n {test_window}",
             f"tmux send-keys -t {tmux_session_name}:{test_window} 'source ~/miniconda/bin/activate genet_env' C-m",
-            f"tmux send-keys -t {tmux_session_name}:{test_window} 'cd ~/Genet/src/emulator/abr' C-m",
+            f"tmux send-keys -t {tmux_session_name}:{test_window} 'cd {pensieve_dir}' C-m",
         ]
 
         # Determine script execution
         if branch == "sim-reproduce":
             commands.append(
-                f"tmux send-keys -t {tmux_session_name}:{test_window} 'bash {SIM_SCRIPT_PATH} {TRACE_DIR}' C-m"
+                f"tmux send-keys -t {tmux_session_name}:{test_window} 'bash {SIM_SCRIPT_PATH} {GENET_BASE_PATH} {TRACE_DIR}' C-m"
             )
         elif start_id is not None and end_id is not None:
             # Multi-server mode with server ID ranges
             commands.append(
                 f"tmux send-keys -t {tmux_session_name}:{test_window} "
-                f"'bash {TEST_SCRIPT_PATH} {MODEL_PATH} {TRACE_DIR} {SUMMARY_DIR} {PORT_ID} {AGENT_ID} {EXTRA_ARGS} {SEED} {start_id} {end_id}' C-m"
+                f"'bash {TEST_SCRIPT_PATH} {GENET_BASE_PATH} {MODEL_PATH} {TRACE_DIR} {SUMMARY_DIR} {PORT_ID} {AGENT_ID} {EXTRA_ARGS} {SEED} {start_id} {end_id}' C-m"
             )
             print("Running test script with command:", commands[-1])
         else:
             # Single-server mode without server IDs
             commands.append(
                 f"tmux send-keys -t {tmux_session_name}:{test_window} "
-                f"'bash {TEST_SCRIPT_PATH} {MODEL_PATH} {TRACE_DIR} {SUMMARY_DIR} {PORT_ID} {AGENT_ID} {EXTRA_ARGS} {SEED}' C-m"
+                f"'bash {TEST_SCRIPT_PATH} {GENET_BASE_PATH} {MODEL_PATH} {TRACE_DIR} {SUMMARY_DIR} {PORT_ID} {AGENT_ID} {EXTRA_ARGS} {SEED}' C-m"
             )
             print("Running test script with command (single-server):", commands[-1])
 

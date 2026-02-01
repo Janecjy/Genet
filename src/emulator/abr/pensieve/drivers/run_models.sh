@@ -2,20 +2,21 @@
 
 # setup_conda
 # sample command  janechen@node1:~/Genet/src/emulator/abr$ 
-# ~/Genet/src/emulator/abr/pensieve/drivers/run_models.sh  ~/Genet/fig_reproduce/model/03_17_model_set/ ~/Genet/fig_reproduce/data/synthetic_test_plus_mahimahi/ 03_17_model_summary 6626 0 --use_embedding > /mydata/logs/emu_test_03_17_model.log 2>&1
+# ~/Genet/src/emulator/abr/pensieve/drivers/run_models.sh <GENET_BASE_PATH> ~/Genet/fig_reproduce/model/03_17_model_set/ ~/Genet/fig_reproduce/data/synthetic_test_plus_mahimahi/ 03_17_model_summary 6626 0 --use_embedding > /mydata/logs/emu_test_03_17_model.log 2>&1
 
 # Usage:
-# ./test_script.sh <MODEL_PARENT_PATH> <TRACE_DIR> <SUMMARY_DIR_NAME> <PORT_ID> <AGENT_ID> <EXTRA_ARG> <SEED> <START_SERVER_ID> <END_SERVER_ID>
+# ./test_script.sh <GENET_BASE_PATH> <MODEL_PARENT_PATH> <TRACE_DIR> <SUMMARY_DIR_NAME> <PORT_ID> <AGENT_ID> <EXTRA_ARG> <SEED> <START_SERVER_ID> <END_SERVER_ID>
 
-MODEL_PARENT_PATH=$1
-TRACE_DIR=$2
-SUMMARY_DIR_NAME=$3
-PORT_ID=$4
-AGENT_ID=$5
-EXTRA_ARG=$6
-SEED=${7:-42}  # Default seed is 42 if not provided
-START_SERVER_ID=${8:-1}  # Default start server ID is 1
-END_SERVER_ID=${9:-28}  # Default end server ID is 28
+GENET_BASE_PATH=$1
+MODEL_PARENT_PATH=$2
+TRACE_DIR=$3
+SUMMARY_DIR_NAME=$4
+PORT_ID=$5
+AGENT_ID=$6
+EXTRA_ARG=$7
+SEED=${8:-42}  # Default seed is 42 if not provided
+START_SERVER_ID=${9:-1}  # Default start server ID is 1
+END_SERVER_ID=${10:-28}  # Default end server ID is 28
 
 # Define the list of (input_type, hidden_size, seed) in order
 adaptor_inputs=("original_selection" "hidden_state")
@@ -89,7 +90,8 @@ for trace in "${trace_files[@]}"; do
                 # Run model with assigned config
                 sub_summary_dir=${SUMMARY_DIR_NAME}/${subdir_name}_nn_model_ep_${prefix}
                 mkdir -p "/mydata/results/$sub_summary_dir"
-                ~/Genet/src/emulator/abr/pensieve/drivers/run_mahimahi_emulation_UDR_3.sh \
+                ${GENET_BASE_PATH}/src/emulator/abr/pensieve/drivers/run_mahimahi_emulation_UDR_3.sh \
+                    ${GENET_BASE_PATH} \
                     ${MODEL_PARENT_PATH}/$subdir_name/nn_model_ep_${prefix}.ckpt \
                     ${temp_trace_dir} ${sub_summary_dir} ${PORT_ID} ${AGENT_ID} \
                     ${adaptor_input} ${adaptor_hidden_size} ${EXTRA_ARG}

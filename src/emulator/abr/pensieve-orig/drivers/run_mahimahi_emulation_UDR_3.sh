@@ -1,12 +1,13 @@
 #!/bin/bash
 set -e
 
+GENET_BASE_PATH=$1
 VIDEO_SIZE_DIR=pensieve/data/video_sizes
 # ACTOR_PATH=${ROOT}/results/7_dims_rand_large_range_correct_rebuf_penalty/even_udr_1_rand_interval/actor_ep_50000.pth
-ACTOR_PATH=/users/janechen/Genet/fig_reproduce/data/all_models/udr_3/nn_model_ep_58000.ckpt
-UP_LINK_SPEED_FILE=/users/janechen/Genet/src/emulator/abr/pensieve/data/12mbps
-TRACE_DIR=$1
-CONFIG_FILE=/users/janechen/Genet/config/abr/udr3_emu_par.json
+ACTOR_PATH=${GENET_BASE_PATH}/fig_reproduce/data/all_models/udr_3/nn_model_ep_58000.ckpt
+UP_LINK_SPEED_FILE=${GENET_BASE_PATH}/src/emulator/abr/pensieve/data/12mbps
+TRACE_DIR=$2
+CONFIG_FILE=${GENET_BASE_PATH}/config/abr/udr3_emu_par.json
 
 # The architecture of emulation experiment.
 
