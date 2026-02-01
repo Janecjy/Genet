@@ -86,12 +86,16 @@ if [ -f "$MODEL_PARENT_PATH"/*.ckpt* ] 2>/dev/null || [[ ! $model_basename =~ se
         # Extract the base filename without extension
         ckpt_basename=$(basename "$file" | sed 's/\.ckpt.*//')
         
+        # Construct the checkpoint path to pass to the script
+        # Pass only .ckpt (without .data, .index, .meta extensions)
+        ckpt_path="${MODEL_PARENT_PATH}/${ckpt_basename}.ckpt"
+        
         # Run model with default config
         sub_summary_dir=${SUMMARY_DIR_NAME}/${ckpt_basename}
         mkdir -p "/mydata/results/$sub_summary_dir"
         ${GENET_BASE_PATH}/src/emulator/abr/pensieve/drivers/run_mahimahi_emulation_UDR_3.sh \
             ${GENET_BASE_PATH} \
-            ${file} \
+            ${ckpt_path} \
             ${temp_trace_dir} ${sub_summary_dir} ${PORT_ID} ${AGENT_ID} \
             ${adaptor_input} ${adaptor_hidden_size} 1 ${EXTRA_ARG}
         
