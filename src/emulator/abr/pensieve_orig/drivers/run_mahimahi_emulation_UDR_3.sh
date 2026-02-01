@@ -9,6 +9,8 @@ UP_LINK_SPEED_FILE=${GENET_BASE_PATH}/src/emulator/abr/pensieve_orig/data/12mbps
 TRACE_DIR=$2
 CONFIG_FILE=${GENET_BASE_PATH}/config/abr/udr3_emu_par.json
 
+# Add the parent directory to PYTHONPATH so pensieve_orig module can be found
+export PYTHONPATH="${GENET_BASE_PATH}/src/emulator/abr:${PYTHONPATH}"
 # The architecture of emulation experiment.
 
 #     localhost                |                 mahimahi container(shell)
