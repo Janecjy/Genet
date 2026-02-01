@@ -44,10 +44,10 @@ trace_files=`ls ${TRACE_DIR}`
                 for trace_file in ${trace_files} ; do
 		                # trace_file=${UP_LINK_SPEED_FILE}
                     # echo "${buffer_threshold} ${delay} ${up_pkt_loss} ${down_pkt_loss} ${TRACE_FILE}"
-                    mkdir -p ${GENET_BASE_PATH}/results/UDR-3_${buf_th}_${delay}_${TRACE_DIR}
+                    mkdir -p ${GENET_BASE_PATH}/results/pensieve/UDR-3_${buf_th}_${delay}
                     mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
                     mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \
-                    bash -c "python -m pensieve_orig.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port 6626 --abr RL --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir ${GENET_BASE_PATH}/results/UDR-3_${buf_th}_${delay}_${TRACE_DIR} --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322"
+                    bash -c "python -m pensieve_orig.virtual_browser.virtual_browser --ip \${MAHIMAHI_BASE} --port 6626 --abr RL --video-size-file-dir ${VIDEO_SIZE_DIR} --summary-dir ${GENET_BASE_PATH}/results/pensieve/UDR-3_${buf_th}_${delay} --trace-file ${trace_file} --actor-path ${ACTOR_PATH} --abr-server-port=8322"
 
 #                      mm-delay ${delay} mm-loss uplink ${up_pkt_loss} mm-loss downlink ${down_pkt_loss} \
 #                      mm-link ${UP_LINK_SPEED_FILE} ${TRACE_DIR}${trace_file} -- \
