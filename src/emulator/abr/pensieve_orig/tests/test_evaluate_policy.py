@@ -1,8 +1,8 @@
-from pensieve.utils import evaluate_policy
-from pensieve.pensieve import Pensieve
-from pensieve.env import Environment
-from pensieve.pensieve import Pensieve
-from pensieve.utils import linear_reward, load_traces
+from pensieve_orig.utils import evaluate_policy
+from pensieve_orig.pensieve import Pensieve
+from pensieve_orig.env import Environment
+from pensieve_orig.pensieve import Pensieve
+from pensieve_orig.utils import linear_reward, load_traces
 
 
 VIDEO_SIZE_FILE_DIR = '/data3/zxxia/pensieve/data/video_sizes'

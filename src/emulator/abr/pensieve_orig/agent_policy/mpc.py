@@ -4,11 +4,11 @@ import multiprocessing as mp
 import numpy as np
 from numba import jit
 
-from pensieve.agent_policy import BaseAgentPolicy
-from pensieve.constants import (B_IN_MB, DEFAULT_QUALITY, M_IN_K,
+from pensieve_orig.agent_policy import BaseAgentPolicy
+from pensieve_orig.constants import (B_IN_MB, DEFAULT_QUALITY, M_IN_K,
                                 MILLISECONDS_IN_SECOND, VIDEO_BIT_RATE,
                                 VIDEO_CHUNK_LEN)
-from pensieve.utils import linear_reward
+from pensieve_orig.utils import linear_reward
 
 CHUNK_COMBO_OPTIONS = np.array(
             [combo for combo in itertools.product(

@@ -2,10 +2,10 @@ import time
 import csv
 import os
 
-from pensieve.agent_policy import Pensieve
-from pensieve.agent_policy.pensieve import compare_mpc_pensieve
-from pensieve.environment import Environment
-from pensieve.utils import load_traces
+from pensieve_orig.agent_policy import Pensieve
+from pensieve_orig.agent_policy.pensieve import compare_mpc_pensieve
+from pensieve_orig.environment import Environment
+from pensieve_orig.utils import load_traces
 
 VIDEO_SIZE_FILE_DIR = '/data3/zxxia/pensieve/data/video_sizes'
 # CONFIG_FILE = '/data3/zxxia/active-domainrand/pensieve/config/default.json'

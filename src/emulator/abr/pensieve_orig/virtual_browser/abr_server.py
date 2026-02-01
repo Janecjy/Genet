@@ -9,10 +9,10 @@ import time
 
 import numpy as np
 
-from pensieve.agent_policy import Pensieve, RobustMPC, BufferBased, FastMPC
-from pensieve.a3c.a3c_jump import ActorNetwork
+from pensieve_orig.agent_policy import Pensieve, RobustMPC, BufferBased, FastMPC
+from pensieve_orig.a3c.a3c_jump import ActorNetwork
 
-from pensieve.constants import (
+from pensieve_orig.constants import (
     A_DIM,
     BUFFER_NORM_FACTOR,
     DEFAULT_QUALITY,
@@ -22,7 +22,7 @@ from pensieve.constants import (
     TOTAL_VIDEO_CHUNK,
     VIDEO_BIT_RATE,
 )
-from pensieve.utils import construct_bitrate_chunksize_map, linear_reward
+from pensieve_orig.utils import construct_bitrate_chunksize_map, linear_reward
 
 RANDOM_SEED = 42
 RAND_RANGE = 1000

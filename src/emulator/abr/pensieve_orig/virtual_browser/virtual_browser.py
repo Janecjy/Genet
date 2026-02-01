@@ -11,7 +11,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
-from pensieve.virtual_browser.abr_server import run_abr_server
+from pensieve_orig.virtual_browser.abr_server import run_abr_server
 
 # TO RUN: download https://pypi.python.org/packages/source/s/selenium/selenium-2.39.0.tar.gz
 # run sudo apt-get install python-setuptools

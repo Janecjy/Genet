@@ -1,8 +1,8 @@
 import os
 
 import numpy as np
-from pensieve.utils import load_traces
-from pensieve.environment import Environment, MultiEnv
+from pensieve_orig.utils import load_traces
+from pensieve_orig.environment import Environment, MultiEnv
 
 VIDEO_SIZE_FILE_DIR = '/data3/zxxia/pensieve/data/video_sizes'
 CONFIG_FILE = '/data3/zxxia/active-domainrand/pensieve/config/rand_buff_thresh.json'

@@ -9,12 +9,12 @@ import numpy as np
 import torch
 import torch.multiprocessing as mp
 
-from pensieve.a3c import A3C, compute_entropy
-from pensieve.agent_policy import BaseAgentPolicy, RobustMPC
-from pensieve.constants import (ACTOR_LR_RATE, A_DIM, CRITIC_LR_RATE,
+from pensieve_orig.a3c import A3C, compute_entropy
+from pensieve_orig.agent_policy import BaseAgentPolicy, RobustMPC
+from pensieve_orig.constants import (ACTOR_LR_RATE, A_DIM, CRITIC_LR_RATE,
                                 DEFAULT_QUALITY, M_IN_K, S_INFO, S_LEN,
                                 VIDEO_BIT_RATE)
-from pensieve.utils import write_json_file
+from pensieve_orig.utils import write_json_file
 
 
 class Pensieve(BaseAgentPolicy):
