@@ -86,50 +86,6 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
 
     return logger
 
-def get_recent_tokens(tokens, context_window=1, feature_dim=None, logger=None):
-    """
-    Extract the most recent tokens with a specified context window.
-    
-    Args:
-        tokens: Array of token features
-        context_window: Number of recent time steps to include (default: 1)
-        feature_dim: Expected feature dimension (default: FEATURE_DIM)
-        logger: Logger instance for debugging output
-    
-    Returns:
-        recent_tokens: Flattened array of recent token features
-    """
-    if feature_dim is None:
-        feature_dim = FEATURE_DIM
-        
-    expected_size = feature_dim * context_window
-    
-    if tokens.size > 0:
-        if logger:
-            logger.info(f"Extracting recent tokens: {tokens[-context_window:]}")
-            logger.info(f"Expected size: {expected_size}")
-        recent_tokens = tokens[-context_window:].flatten()
-        
-        # Ensure we get exactly the expected number of elements
-        if recent_tokens.size != expected_size:
-            if logger:
-                logger.warning(f"Token size mismatch: got {recent_tokens.size}, expected {expected_size}")
-            if recent_tokens.size > expected_size:
-                recent_tokens = recent_tokens[:expected_size]
-            else:
-                padded = np.zeros(expected_size)
-                padded[:recent_tokens.size] = recent_tokens
-                recent_tokens = padded
-        
-        if logger:
-            logger.info(f"Recent tokens shape: {recent_tokens.shape}")
-    else:
-        recent_tokens = np.zeros(expected_size)
-        if logger:
-            logger.info(f"No tokens available, using zeros with shape: {recent_tokens.shape}")
-    
-    return recent_tokens
-
 def one_hot_encode(index, num_classes):
     """
     Given an integer `index` in [0, num_classes-1],
@@ -138,26 +94,6 @@ def one_hot_encode(index, num_classes):
     one_hot = np.zeros(num_classes, dtype=np.float32)
     one_hot[index] = 1.0
     return one_hot
-
-def global_min_max_normalize(arr, global_min, global_max):
-    """
-    Normalize a 1D numpy array using global min/max values to [0, 1].
-    This ensures consistent scaling across all inputs.
-    
-    Args:
-        arr: Array to normalize
-        global_min: Global minimum values for each feature
-        global_max: Global maximum values for each feature
-    
-    Returns:
-        Normalized array with consistent scaling
-    """
-    diff = global_max - global_min
-    # Avoid division by zero - if min==max, keep original values
-    mask = np.abs(diff) > 1e-12
-    normalized = np.copy(arr)
-    normalized[mask] = (arr[mask] - global_min[mask]) / diff[mask]
-    return normalized
 
 def min_max_normalize(arr):
     """
@@ -192,7 +128,7 @@ class Pensieve():
 
     def __init__(self, num_agents, log_dir, actor=None,
                  critic_path=None, model_save_interval=100, batch_size=100,
-                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces="", original_actor=None, adaptor_input=None, adaptor_hidden_layer=None, context_window=1, seed=None):
+                 randomization='', randomization_interval=1, video_size_file_dir="", val_traces="", original_actor=None, adaptor_input=None, adaptor_hidden_layer=None):
         # https://github.com/pytorch/pytorch/issues/3966
         # mp.set_start_method("spawn")
         self.num_agents = num_agents
@@ -202,18 +138,16 @@ class Pensieve():
         self.original_actor = original_actor
         self.adaptor_input = adaptor_input
         self.adaptor_hidden_layer = adaptor_hidden_layer
-        self.context_window = context_window
-        self.seed = seed
         if self.adaptor_input == "original_action_prob":
-            self.state_dim = 3 + FEATURE_DIM * self.context_window
+            self.state_dim = 3 + EMBEDDING_SIZE
         elif self.adaptor_input == "original_selection":
-            self.state_dim = 3 + FEATURE_DIM * self.context_window
+            self.state_dim = 3 + EMBEDDING_SIZE
         elif self.adaptor_input == "original_bit_rate":
-            self.state_dim = 6 + FEATURE_DIM * self.context_window
+            self.state_dim = 6 + EMBEDDING_SIZE
         elif self.adaptor_input == "hidden_state":
-            self.state_dim = 3 + FEATURE_DIM * self.context_window
+            self.state_dim = 3 + EMBEDDING_SIZE
         else:
-            self.state_dim = [S_INFO+FEATURE_DIM, S_LEN] 
+            self.state_dim = [S_INFO+EMBEDDING_SIZE, S_LEN] 
         # NOTE: this is required for the ``fork`` method to work
         # self.net.actor_network.share_memory()
         # self.net.critic_network.share_memory()
@@ -294,8 +228,7 @@ class Pensieve():
                     original_actor_path,
                     self.adaptor_input,
                     self.adaptor_hidden_layer,
-                    self.state_dim,
-                    self.context_window
+                    self.state_dim
                 )
             ))
             # agents.append(mp.Process(
@@ -517,21 +450,9 @@ class Pensieve():
                     # if val_mean_reward > max_avg_reward:
                     # max_avg_reward = val_mean_reward
                     # Save the neural net parameters to disk.
-                    # Create descriptive model name with configuration parameters
-                    model_name_parts = [f"nn_model_ep_{epoch}"]
-                    if self.seed is not None:
-                        model_name_parts.append(f"seed_{self.seed}")
-                    if self.adaptor_input is not None:
-                        model_name_parts.append(f"adaptor_{self.adaptor_input}")
-                    if self.adaptor_hidden_layer is not None:
-                        model_name_parts.append(f"hidden_{self.adaptor_hidden_layer}")
-                    if self.context_window is not None:
-                        model_name_parts.append(f"cw_{self.context_window}")
-                    
-                    model_filename = "_".join(model_name_parts) + ".ckpt"
                     save_path = saver.save(
                         sess,
-                        os.path.join(save_dir, "model_saved", model_filename))
+                        os.path.join(save_dir, "model_saved", f"nn_model_ep_{epoch}.ckpt"))
                     self.train_logger.info("Model saved in file: " + save_path)
 
                 end_t = time.time()
@@ -559,12 +480,7 @@ class Pensieve():
         # print(bit_rate)
         return bit_rate
 
-    def select_action(self, state, last_bit_rate, use_embedding=False, embeddings=None, tokens=None):
-        # Initialize tokens with zeros if not provided
-        if tokens is None:
-            tokens = np.zeros((FEATURE_DIM,))
-            self.test_logger.info(f"Tokens not provided, initialized with zeros: shape {tokens.shape}")
-            
+    def select_action(self, state, last_bit_rate, use_embedding=False, embeddings=None):
         if use_embedding:
             self.test_logger.info("use embedding")
             if self.adaptor_input is not None:
@@ -594,23 +510,22 @@ class Pensieve():
                 embeddings_flat = embeddings.flatten()  
                 embeddings_norm = min_max_normalize(embeddings_flat)
 
-                # Branch 2: HIDDEN / hidden_state  
+                # Branch 2: HIDDEN
+                # (same logic will also apply to hidden_state, see below)
                 if self.adaptor_input == "hidden_state":
                     self.test_logger.info("hidden adaptor")
                     
-                    # For hidden_state, the state_dim calculation shows it should be 3 + FEATURE_DIM * context_window
-                    # This suggests we should use a 3-element prefix + recent tokens, not the hidden state
-                    # Get the action probabilities as the 3-element prefix
-                    original_action_prob = self.original_actor.predict(
+                    # Get the hidden state from the original actor
+                    original_hidden = self.original_actor.get_hidden(
                         np.reshape(state, (1, S_INFO, S_LEN))
-                    )
-                    original_action_prob_flat = original_action_prob.flatten()  # shape: (3,)
+                    )  # shape e.g. (1, 128)
                     
-                    # Use get_recent_tokens instead of embeddings
-                    recent_tokens = get_recent_tokens(tokens, self.context_window, FEATURE_DIM, self.test_logger)
+                    # Flatten + min–max normalize
+                    original_hidden_flat = original_hidden.flatten()
+                    original_hidden_flat_norm = min_max_normalize(original_hidden_flat)
                     
-                    # Concat action_prob + recent tokens
-                    adaptor_input = np.concatenate((original_action_prob_flat, recent_tokens))
+                    # Concat hidden + embeddings
+                    adaptor_input = np.concatenate((original_hidden_flat_norm, embeddings_norm))
                     self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
 
                 # Branch 3: original_action_prob (min–max normalize raw probabilities)
@@ -623,17 +538,12 @@ class Pensieve():
                     # Min–max normalize the probabilities
                     original_action_prob_norm = min_max_normalize(original_action_prob_flat)
                     
-                    # Use get_recent_tokens instead of embeddings_norm
-                    recent_tokens = get_recent_tokens(tokens, self.context_window, FEATURE_DIM, self.test_logger)
-                    
-                    # Concat with recent tokens
-                    adaptor_input = np.concatenate((original_action_prob_norm, recent_tokens), axis=0)
+                    # Concat with normalized embeddings
+                    adaptor_input = np.concatenate((original_action_prob_norm, embeddings_norm), axis=0)
                     self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
 
                 # Branch 4: original_selection (one‐hot encode the selection)
                 elif self.adaptor_input == "original_selection":
-
-                    self.test_logger.info("original_selection adaptor")
                     original_action_prob = self.original_actor.predict(
                         np.reshape(state, (1, S_INFO, S_LEN))
                     )
@@ -645,11 +555,8 @@ class Pensieve():
                     # If your real actions are -1,0,1 → map them to 0,1,2
                     original_selection_one_hot = one_hot_encode(original_selection, 3)
                     
-                    # Use get_recent_tokens instead of embeddings_norm
-                    recent_tokens = get_recent_tokens(tokens, self.context_window, FEATURE_DIM, self.test_logger)
-                    
-                    # Concat with recent tokens
-                    adaptor_input = np.concatenate((original_selection_one_hot, recent_tokens), axis=0)
+                    # Concat with normalized embeddings
+                    adaptor_input = np.concatenate((original_selection_one_hot, embeddings_norm), axis=0)
                     self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
 
                 # Branch 5: original_bit_rate (one‐hot encode the resulting bit rate)
@@ -667,11 +574,8 @@ class Pensieve():
                     # One-hot encode bit_rate across 6 possible levels
                     bit_rate_one_hot = one_hot_encode(bit_rate, 6)
                     
-                    # Use get_recent_tokens instead of embeddings_norm
-                    recent_tokens = get_recent_tokens(tokens, self.context_window, FEATURE_DIM, self.test_logger)
-                    
-                    # Concat with recent tokens
-                    adaptor_input = np.concatenate((bit_rate_one_hot, recent_tokens), axis=0)
+                    # Concat with normalized embeddings
+                    adaptor_input = np.concatenate((bit_rate_one_hot, embeddings_norm), axis=0)
                     self.test_logger.info(f"adaptor_input shape: {adaptor_input.shape}")
                 # If no known adaptor, just pass the state + embedding directly to net
                 else:
@@ -728,28 +632,8 @@ class Pensieve():
 
     def save_models(self, model_save_path):
         """Save models to a directory."""
-        # Create descriptive model names with configuration parameters
-        actor_name_parts = ["actor"]
-        critic_name_parts = ["critic"]
-        
-        if self.seed is not None:
-            actor_name_parts.append(f"seed_{self.seed}")
-            critic_name_parts.append(f"seed_{self.seed}")
-        if self.adaptor_input is not None:
-            actor_name_parts.append(f"adaptor_{self.adaptor_input}")
-            critic_name_parts.append(f"adaptor_{self.adaptor_input}")
-        if self.adaptor_hidden_layer is not None:
-            actor_name_parts.append(f"hidden_{self.adaptor_hidden_layer}")
-            critic_name_parts.append(f"hidden_{self.adaptor_hidden_layer}")
-        if self.context_window is not None:
-            actor_name_parts.append(f"cw_{self.context_window}")
-            critic_name_parts.append(f"cw_{self.context_window}")
-        
-        actor_filename = "_".join(actor_name_parts) + ".pth"
-        critic_filename = "_".join(critic_name_parts) + ".pth"
-        
-        self.net.save_actor_model(os.path.join(model_save_path, actor_filename))
-        self.net.save_critic_model(os.path.join(model_save_path, critic_filename))
+        self.net.save_actor_model(os.path.join(model_save_path, "actor.pth"))
+        self.net.save_critic_model(os.path.join(model_save_path, "critic.pth"))
 
     def load_models(self, actor_model_path, critic_model_path):
         """Load models from given paths."""
@@ -850,29 +734,10 @@ class Pensieve():
                 # Save the neural net parameters to disk.
                 print("Train epoch: {}/{}, time use: {}s".format(
                     epoch + 1, iters, time.time() - t_start))
-                
-                # Create descriptive model names with configuration parameters
-                critic_name_parts = [f"critic_ep_{self.epoch + 1}"]
-                actor_name_parts = [f"actor_ep_{self.epoch + 1}"]
-                
-                if self.seed is not None:
-                    critic_name_parts.append(f"seed_{self.seed}")
-                    actor_name_parts.append(f"seed_{self.seed}")
-                if self.adaptor_input is not None:
-                    critic_name_parts.append(f"adaptor_{self.adaptor_input}")
-                    actor_name_parts.append(f"adaptor_{self.adaptor_input}")
-                if self.adaptor_hidden_layer is not None:
-                    critic_name_parts.append(f"hidden_{self.adaptor_hidden_layer}")
-                    actor_name_parts.append(f"hidden_{self.adaptor_hidden_layer}")
-                if self.context_window is not None:
-                    critic_name_parts.append(f"cw_{self.context_window}")
-                    actor_name_parts.append(f"cw_{self.context_window}")
-                
-                critic_filename = "_".join(critic_name_parts) + ".pth"
-                actor_filename = "_".join(actor_name_parts) + ".pth"
-                
-                self.net.save_critic_model(os.path.join(self.log_dir, critic_filename))
-                self.net.save_actor_model(os.path.join(self.log_dir, actor_filename))
+                self.net.save_critic_model(os.path.join(
+                    self.log_dir, "critic_ep_{}.pth".format(self.epoch + 1)))
+                self.net.save_actor_model(os.path.join(
+                    self.log_dir, "actor_ep_{}.pth".format(self.epoch + 1)))
 
                 # tmp_save_dir = os.path.join(self.log_dir, 'test_results')
                 if val_envs is not None:
@@ -943,7 +808,7 @@ def compute_reward(msg, bit_rate, last_quality):
 
 def agent(agent_id, net_params_queue, exp_queue, train_envs,
           summary_dir, batch_size, randomization, randomization_interval,
-          num_agents, original_actor_path, adaptor_input_type, adaptor_hidden_layer, s_dim, context_window):
+          num_agents, original_actor_path, adaptor_input_type, adaptor_hidden_layer, s_dim):
     """
     Each agent process picks an environment (delay, trace) from train_envs,
     starts a Mahimahi shell, runs the virtual_browser, collects data, etc.
@@ -1093,14 +958,7 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
                         original_action_cumsum = np.cumsum(original_action_prob)
                         original_selection = (original_action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
                         original_selection_one_hot = one_hot_encode(original_selection, 3)
-                        
-                        # Use raw tokens with configurable context window
-                        recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
-                        
-                        adaptor_input_raw = np.concatenate((original_selection_one_hot, recent_tokens), axis=0)
-                        agent_logger.info(f"Shape of adaptor_input_raw (original_selection): {adaptor_input_raw.shape}")
-                        agent_logger.info(f"Context window size: {context_window}")
-                        agent_logger.info(f"Recent tokens shape: {recent_tokens.shape}")
+                        adaptor_input_raw = np.concatenate((original_selection_one_hot, embeddings), axis=0)
 
                     elif adaptor_input_type == "original_bit_rate":
                         original_action_prob = original_actor.predict(reshaped_state)
@@ -1127,42 +985,17 @@ def agent(agent_id, net_params_queue, exp_queue, train_envs,
 
                     if adaptor_input_type == "original_action_prob":
                         original_action_prob_norm = min_max_normalize(original_action_prob)
-                        # Use get_recent_tokens instead of embeddings_norm
-                        recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
-                        recent_tokens_norm = min_max_normalize(recent_tokens)
-                        adaptor_input = np.concatenate((original_action_prob_norm, recent_tokens_norm), axis=0)
+                        adaptor_input = np.concatenate((original_action_prob_norm, embeddings_norm), axis=0)
 
                     elif adaptor_input_type == "original_selection":
-                        # Use the same recent tokens as in adaptor_input_raw, but normalize them using global min/max
-                        recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
-                        
-                        # Use global normalization for consistent scaling
-                        if min_raw_adaptor_input is not None and max_raw_adaptor_input is not None:
-                            # Extract the token portion from global min/max (skip the first 3 elements which are one-hot)
-                            global_token_min = min_raw_adaptor_input[3:]  # Skip one-hot part
-                            global_token_max = max_raw_adaptor_input[3:]  # Skip one-hot part
-                            recent_tokens_norm = global_min_max_normalize(recent_tokens, global_token_min, global_token_max)
-                            agent_logger.info(f"Using global normalization - token min: {global_token_min}, max: {global_token_max}")
-                        else:
-                            # Fallback to local normalization if no global stats yet
-                            recent_tokens_norm = min_max_normalize(recent_tokens)
-                            agent_logger.warning("Using local normalization (no global stats available yet)")
-                        
-                        adaptor_input = np.concatenate((original_selection_one_hot, recent_tokens_norm), axis=0)
-                        agent_logger.info(f"Normalized recent_tokens: min={recent_tokens_norm.min():.4f}, max={recent_tokens_norm.max():.4f}")
+                        adaptor_input = np.concatenate((original_selection_one_hot, embeddings_norm), axis=0)
 
                     elif adaptor_input_type == "original_bit_rate":
-                        # Use get_recent_tokens instead of embeddings_norm
-                        recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
-                        recent_tokens_norm = min_max_normalize(recent_tokens)
-                        adaptor_input = np.concatenate((bit_rate_one_hot, recent_tokens_norm), axis=0)
+                        adaptor_input = np.concatenate((bit_rate_one_hot, embeddings_norm), axis=0)
 
                     elif adaptor_input_type == "hidden_state":
-                        # For hidden_state, use same logic as inference: action_prob + recent_tokens
-                        original_action_prob_flat = original_action_prob.flatten()  # shape: (3,)
-                        recent_tokens = get_recent_tokens(tokens, context_window, FEATURE_DIM, agent_logger)
-                        recent_tokens_norm = min_max_normalize(recent_tokens)
-                        adaptor_input = np.concatenate((original_action_prob_flat, recent_tokens_norm))
+                        original_hidden_flat_norm = min_max_normalize(original_hidden)
+                        adaptor_input = np.concatenate((original_hidden_flat_norm, embeddings_norm))
 
 
                     agent_logger.info(f"[Agent {agent_id}] Adaptor input shape: {adaptor_input.shape}")
