@@ -62,7 +62,8 @@ if [ -f "$MODEL_PARENT_PATH"/*.ckpt* ] 2>/dev/null || [[ ! $model_basename =~ se
     
     # Use default config for single model
     adaptor_input="original_selection"
-    adaptor_hidden_size=128
+    adaptor_hidden_size=256
+    seed=20
     
     for trace in "${trace_files[@]}"; do
         echo "Processing trace: $trace"
