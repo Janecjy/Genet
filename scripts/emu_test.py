@@ -27,7 +27,7 @@ args = parser.parse_args()
 username = config.get("username")
 GENET_BASE_PATH = f"/users/{username}/Genet"
 TEST_SCRIPT_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve/drivers/run_models.sh"
-SIM_SCRIPT_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve-orig/drivers/run_mahimahi_emulation_UDR_3.sh"
+SIM_SCRIPT_PATH = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve_orig/drivers/run_mahimahi_emulation_UDR_3.sh"
 
 # Default argument values
 MODEL_PATH = f"{GENET_BASE_PATH}/fig_reproduce/model/{args.model_dir_name}/"
@@ -85,8 +85,8 @@ def start_remote_test(server, start_id=None, end_id=None):
 
         # Determine video server path and pensieve directory based on branch
         if branch == "sim-reproduce":
-            video_server_dir = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve-orig/video_server"
-            pensieve_dir = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve-orig"
+            video_server_dir = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve_orig/video_server"
+            pensieve_dir = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve_orig"
         else:
             video_server_dir = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve/video_server"
             pensieve_dir = f"{GENET_BASE_PATH}/src/emulator/abr/pensieve"
