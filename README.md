@@ -2,6 +2,8 @@
 
 This repository extends the [Pensieve](https://github.com/hongzimao/pensieve) implementation from the [Genet](https://github.com/GenetProject/Genet) codebase to integrate **Unum adaptor** with adaptive bitrate (ABR) video streaming.
 
+Here is a video step-by-step tutorial demonstrating how to set up a simple test for the artifact evaluation: https://drive.google.com/file/d/1dXcBlECiazWIUwPtp6NtRrc1FZrDwzZ8/view?usp=share_link
+
 ## Overview
 
 **Genet with Unum** provides a reinforcement learning framework for adaptive bitrate streaming that combines:
