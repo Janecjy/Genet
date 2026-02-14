@@ -30,7 +30,7 @@ pensieve_unum_logs = [f for f in os.listdir(PENSIEVE_UNUM_DIR) if f.startswith('
 # Find common traces
 common_traces = set(pensieve_logs) & set(pensieve_unum_logs)
 
-print(f"Found {len(common_traces)} common traces between pensieve and pensieve-unum")
+# print(f"Found {len(common_traces)} common traces between pensieve and pensieve-unum")
 
 # Process each trace type separately
 for trace_type in ['fcc', 'norway']:
@@ -43,7 +43,7 @@ for trace_type in ['fcc', 'norway']:
         print(f"No traces found for {trace_type}")
         continue
     
-    print(f"\n[{trace_type.upper()}] Processing {len(type_traces)} traces")
+    # print(f"\n[{trace_type.upper()}] Processing {len(type_traces)} traces")
     
     # Compute improvements for each trace
     improvements = []
@@ -66,10 +66,10 @@ for trace_type in ['fcc', 'norway']:
             valid_traces.append(trace_file)
     
     if improvements:
-        print(f"[{trace_type.upper()}] Successfully processed {len(improvements)} traces")
-        print(f"[{trace_type.upper()}] Mean Pensieve Reward: {np.mean(pensieve_rewards):.4f}")
-        print(f"[{trace_type.upper()}] Mean Pensieve-UNUM Reward: {np.mean(unum_rewards):.4f}")
-        print(f"[{trace_type.upper()}] Mean Improvement: {np.mean(improvements):.4f} ({np.mean(improvements)*100:.2f}%)")
+        # print(f"[{trace_type.upper()}] Successfully processed {len(improvements)} traces")
+        # print(f"[{trace_type.upper()}] Mean Pensieve Reward: {np.mean(pensieve_rewards):.4f}")
+        # print(f"[{trace_type.upper()}] Mean Pensieve-UNUM Reward: {np.mean(unum_rewards):.4f}")
+        # print(f"[{trace_type.upper()}] Mean Improvement: {np.mean(improvements):.4f} ({np.mean(improvements)*100:.2f}%)")
         all_improvements.append(np.array(improvements))
         labels.append(trace_type.upper())
 
